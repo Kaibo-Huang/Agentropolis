@@ -14,8 +14,9 @@ AsyncSessionLocal = None
 if settings.database_url:
     engine = create_async_engine(
         settings.database_url,
-        pool_size=10,
-        max_overflow=5,
+        pool_size=20,
+        max_overflow=10,
+        pool_recycle=300,
         echo=False,
         # asyncpg requires SSL to be passed via connect_args, not the URL query string.
         connect_args={"ssl": True},
