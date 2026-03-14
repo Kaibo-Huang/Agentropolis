@@ -1,5 +1,7 @@
 # Agentropolis — Society Simulation
 
+![](thumbnail.png)
+
 Agentropolis is a TypeScript simulation of a city with **population**, **economy**, **public health**, **housing cost**, **pollution**, and **public opinion**. The engine runs in discrete days and supports an **Event** system for policy changes, disasters, and other one-off effects. The code is structured so you can extend it with AI agents later.
 
 ## Structure
