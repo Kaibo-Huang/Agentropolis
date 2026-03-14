@@ -72,7 +72,7 @@ class GentleZoomControl {
   private zoom(direction: 1 | -1): void {
     if (!this.map) return;
     const current = this.map.getZoom();
-    const next = Math.min(22, Math.max(0, current + direction * ZOOM_DELTA));
+    const next = Math.min(22, Math.max(12, current + direction * ZOOM_DELTA));
     this.map.easeTo({ zoom: next, duration: 320 });
   }
 
@@ -388,9 +388,14 @@ export class TorontoMapboxScene {
       style: "mapbox://styles/mapbox/standard",
       center: TORONTO_CENTER,
       zoom: 15.5,
+      minZoom: 12,
       pitch: 60,
       bearing: -20,
       antialias: true,
+      maxBounds: [
+        [-79.65, 43.55], // SW corner (lng, lat)
+        [-79.10, 43.75], // NE corner (lng, lat)
+      ],
     });
 
     this.map.addControl(new GentleZoomControl(), "bottom-right");
