@@ -100,6 +100,8 @@ class Archetype(Base):
     industry: Mapped[str] = mapped_column(String(128), nullable=False)
     social_class: Mapped[str | None] = mapped_column(String(64), nullable=True)
     region: Mapped[str] = mapped_column(String(128), nullable=False)
+    home_neighborhood: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    work_district: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     session: Mapped["Session"] = relationship(back_populates="archetypes", lazy="noload")
     followers: Mapped[list["Follower"]] = relationship(
@@ -153,6 +155,8 @@ class Follower(Base):
     volatility: Mapped[float] = mapped_column(Float, nullable=False)
     avatar_seed: Mapped[int | None] = mapped_column(Integer, nullable=True)
     avatar_params: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    home_neighborhood: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    work_district: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     session: Mapped["Session"] = relationship(back_populates="followers", lazy="noload")
     archetype: Mapped["Archetype"] = relationship(
@@ -188,6 +192,7 @@ class Company(Base):
     industry: Mapped[str] = mapped_column(String(128), nullable=False)
     region: Mapped[str] = mapped_column(String(128), nullable=False)
     position: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    work_district: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     session: Mapped["Session"] = relationship(back_populates="companies", lazy="noload")
 
@@ -358,3 +363,5 @@ class Demographic(Base):
     industry: Mapped[str | None] = mapped_column(String(128), nullable=True)
     social_class: Mapped[str | None] = mapped_column(String(64), nullable=True)
     region: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    home_neighborhood: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    work_district: Mapped[str | None] = mapped_column(String(128), nullable=True)
