@@ -49,6 +49,45 @@
       h1, h2, h3, h4, h5, h6 {
         font-family: var(--font-heading);
       }
+      /* Follower popup (Mapbox) */
+      .follower-popup-container.mapboxgl-popup .mapboxgl-popup-content {
+        background: var(--card);
+        color: var(--card-foreground);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 0.75rem 1rem;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        font-family: var(--font-sans);
+        font-size: 0.8125rem;
+      }
+      .follower-popup-container.mapboxgl-popup .mapboxgl-popup-tip {
+        border-top-color: var(--card);
+        border-bottom-color: var(--card);
+        left: 50%;
+        transform: translateX(-50%);
+      }
+      .follower-popup-table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      .follower-popup-table td {
+        padding: 0.2rem 0.5rem 0.2rem 0;
+        vertical-align: top;
+      }
+      .follower-popup-label {
+        color: var(--muted-foreground);
+        font-size: 0.75rem;
+        white-space: nowrap;
+      }
+      .follower-popup-section {
+        font-family: var(--font-heading);
+        font-size: 0.7rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--muted-foreground);
+        padding-top: 0.5rem !important;
+      }
       #canvas-container {
         position: fixed;
         inset: 0;
