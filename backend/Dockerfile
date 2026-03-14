@@ -1,4 +1,4 @@
-FROM astral/uv:python3.12-bookworm-slim
+FROM astral/uv:python3.12-bookworm-slim AS builder
 
 WORKDIR /app
 
@@ -7,5 +7,14 @@ RUN uv sync --no-dev --no-install-project --frozen
 
 COPY src/ src/
 RUN uv sync --no-dev --frozen
+
+FROM python:3.12-slim-bookworm
+
+WORKDIR /app
+
+COPY --from=builder /app/.venv /app/.venv
+COPY --from=builder /app/src /app/src
+
+ENV PATH="/app/.venv/bin:$PATH"
 
 CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
