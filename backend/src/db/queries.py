@@ -106,6 +106,28 @@ async def batch_insert_archetypes(
     await db.execute(insert(Archetype), archetypes_data)
 
 
+async def get_archetypes_with_follower_counts(
+    db: AsyncSession, session_id: uuid.UUID
+) -> list[tuple]:
+    """Return archetypes with their follower counts in a single query."""
+    from sqlalchemy import and_
+
+    stmt = (
+        select(Archetype, func.count(Follower.follower_id).label("follower_count"))
+        .outerjoin(
+            Follower,
+            and_(
+                Archetype.session_id == Follower.session_id,
+                Archetype.archetype_id == Follower.archetype_id,
+            ),
+        )
+        .where(Archetype.session_id == session_id)
+        .group_by(Archetype.session_id, Archetype.archetype_id)
+    )
+    result = await db.execute(stmt)
+    return list(result.all())
+
+
 # ---------------------------------------------------------------------------
 # Followers
 # ---------------------------------------------------------------------------
@@ -145,6 +167,16 @@ async def get_follower_count(db: AsyncSession, session_id: uuid.UUID) -> int:
     return result.scalar_one()
 
 
+async def get_all_followers_for_session(
+    db: AsyncSession, session_id: uuid.UUID
+) -> list[Follower]:
+    """Return all followers for a session (no pagination). Used by health tick."""
+    result = await db.execute(
+        select(Follower).where(Follower.session_id == session_id)
+    )
+    return list(result.scalars().all())
+
+
 async def batch_insert_followers(
     db: AsyncSession, followers_data: list[dict]
 ) -> None:
@@ -173,20 +205,21 @@ async def batch_update_followers(
     """
     Each dict in `updates` must contain `session_id` and `follower_id`
     (to identify the row) plus the columns to update.
-    Executed as individual UPDATE statements to preserve per-row values.
+
+    Groups updates by column-set and issues one bulk UPDATE per group
+    (SQLAlchemy executemany over asyncpg pipelining).
     """
+    if not updates:
+        return
+    from collections import defaultdict
+
+    groups: dict[frozenset[str], list[dict]] = defaultdict(list)
     for upd in updates:
-        sid = upd.pop("session_id")
-        fid = upd.pop("follower_id")
-        if upd:
-            await db.execute(
-                update(Follower)
-                .where(
-                    Follower.session_id == sid,
-                    Follower.follower_id == fid,
-                )
-                .values(**upd)
-            )
+        cols = frozenset(k for k in upd if k not in ("session_id", "follower_id"))
+        groups[cols].append(upd)
+
+    for _cols, group in groups.items():
+        await db.execute(update(Follower), group)
 
 
 async def get_follower_stats(
@@ -266,6 +299,14 @@ async def create_post(db: AsyncSession, post_data: dict) -> Post:
     await db.flush()
     await db.refresh(post)
     return post
+
+
+async def batch_insert_posts(
+    db: AsyncSession, posts_data: list[dict]
+) -> None:
+    if not posts_data:
+        return
+    await db.execute(insert(Post), posts_data)
 
 
 async def get_posts_for_session(

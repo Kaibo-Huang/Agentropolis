@@ -31,19 +31,17 @@ async def list_archetypes(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    archetypes = await queries.get_archetypes_for_session(db, session_id)
+    rows = await queries.get_archetypes_with_follower_counts(db, session_id)
 
-    result = []
-    for arch in archetypes:
-        followers = await queries.get_followers_by_archetype(db, session_id, arch.archetype_id)
-        result.append(
-            ArchetypeResponse(
-                archetype_id=arch.archetype_id,
-                industry=arch.industry,
-                social_class=arch.social_class,
-                region=arch.region,
-                follower_count=len(followers),
-            )
+    result = [
+        ArchetypeResponse(
+            archetype_id=arch.archetype_id,
+            industry=arch.industry,
+            social_class=arch.social_class,
+            region=arch.region,
+            follower_count=count,
         )
+        for arch, count in rows
+    ]
 
     return ArchetypeListResponse(archetypes=result)

@@ -371,6 +371,7 @@ function setup3D(
       id: "toronto-regions-fill",
       type: "fill",
       source: "toronto-regions",
+      slot: "middle",
       paint: {
         "fill-color": ["get", "color"],
         "fill-opacity": 0.7,
@@ -388,6 +389,7 @@ function setup3D(
       filter: ["==", "extrude", "true"],
       type: "fill-extrusion",
       minzoom: 14,
+      slot: "middle",
       paint: buildingExtrusionPaint(buildingColorExpression(buildingColors)),
     },
     beforeId
@@ -560,8 +562,10 @@ export class TorontoMapboxScene {
   }
 
   setFollowers(followers: MapFollower[]): void {
-    this.lastFollowers = followers;
     if (!this.map) return;
+    // Skip rebuild if same reference (no change)
+    if (followers === this.lastFollowers) return;
+    this.lastFollowers = followers;
     const source = this.map.getSource("followers");
     if (source && "setData" in source) {
       (source as mapboxgl.GeoJSONSource).setData(buildFollowerGeoJSON(followers));

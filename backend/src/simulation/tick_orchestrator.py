@@ -34,8 +34,31 @@ from src.db.models import Archetype
 
 logger = logging.getLogger(__name__)
 
-MAX_CONCURRENT_ARCHETYPES = 5
+MAX_CONCURRENT_ARCHETYPES = 10
 MAX_LLM_RETRIES = 3
+
+
+class _IdAllocator:
+    """Thread-safe (async) ID range allocator to prevent race conditions."""
+
+    def __init__(self, next_memory_id: int, next_post_id: int):
+        self._lock = asyncio.Lock()
+        self._next_memory = next_memory_id
+        self._next_post = next_post_id
+
+    async def allocate_memory_ids(self, count: int) -> int:
+        """Reserve `count` memory IDs and return the start of the range."""
+        async with self._lock:
+            start = self._next_memory
+            self._next_memory += count
+            return start
+
+    async def allocate_post_ids(self, count: int) -> int:
+        """Reserve `count` post IDs and return the start of the range."""
+        async with self._lock:
+            start = self._next_post
+            self._next_post += count
+            return start
 
 
 async def run_hourly_tick(
@@ -70,6 +93,16 @@ async def run_hourly_tick(
         archetypes = await queries.get_archetypes_for_session(db, session_id)
         current_time = session_obj.virtual_time
 
+        # Pre-fetch max IDs once to avoid race conditions in parallel processing
+        next_memory_id = await queries.get_max_id(
+            db, queries.Memory, session_id, "memory_id"
+        )
+        next_post_id = await queries.get_max_id(
+            db, queries.Post, session_id, "post_id"
+        )
+
+    id_alloc = _IdAllocator(next_memory_id, next_post_id)
+
     async def process_archetype(archetype: Archetype) -> dict:
         async with semaphore:
             return await _process_single_archetype(
@@ -78,6 +111,7 @@ async def run_hourly_tick(
                 current_time=current_time,
                 target_time=target_time,
                 tick_number=tick_number,
+                id_alloc=id_alloc,
             )
 
     results = await asyncio.gather(
@@ -111,6 +145,7 @@ async def _process_single_archetype(
     current_time: datetime,
     target_time: datetime,
     tick_number: int,
+    id_alloc: _IdAllocator,
 ) -> dict:
     """Process a single archetype: LLM decision + follower variations + persist.
 
@@ -131,10 +166,10 @@ async def _process_single_archetype(
         )
 
         # ------------------------------------------------------------------
-        # 2. Persist memories
+        # 2. Persist memories (race-safe ID allocation)
         # ------------------------------------------------------------------
-        next_memory_id = await queries.get_max_id(
-            db, queries.Memory, session_id, "memory_id"
+        next_memory_id = await id_alloc.allocate_memory_ids(
+            len(archetype_response.actions)
         )
         memories_data = []
         for i, action in enumerate(archetype_response.actions):
@@ -150,32 +185,44 @@ async def _process_single_archetype(
                     "thinking": action.thinking,
                 }
             )
-        await queries.batch_insert_memories(db, memories_data)
 
         # ------------------------------------------------------------------
-        # 3. Get followers and generate variations
+        # 3. Get followers and generate variations IN PARALLEL with memory persist
         # ------------------------------------------------------------------
         followers = await queries.get_followers_by_archetype(
             db, session_id, archetype.archetype_id
         )
 
         if followers:
-            follower_updates, new_posts = await _generate_follower_variations(
-                db=db,
-                session_id=session_id,
-                archetype=archetype,
-                archetype_response=archetype_response,
-                followers=followers,
-                target_time=target_time,
+            # Run memory persist and follower variation concurrently
+            async def persist_memories():
+                await queries.batch_insert_memories(db, memories_data)
+
+            async def gen_variations():
+                return await _generate_follower_variations(
+                    db=db,
+                    session_id=session_id,
+                    archetype=archetype,
+                    archetype_response=archetype_response,
+                    followers=followers,
+                    target_time=target_time,
+                    id_alloc=id_alloc,
+                )
+
+            _, (follower_updates, new_posts) = await asyncio.gather(
+                persist_memories(),
+                gen_variations(),
             )
 
             # 4. Apply follower updates
             if follower_updates:
                 await queries.batch_update_followers(db, follower_updates)
 
-            # 5. Create posts
-            for post_data in new_posts:
-                await queries.create_post(db, post_data)
+            # 5. Batch-create posts
+            if new_posts:
+                await queries.batch_insert_posts(db, new_posts)
+        else:
+            await queries.batch_insert_memories(db, memories_data)
 
         await db.commit()
 
@@ -257,6 +304,7 @@ async def _generate_follower_variations(
     archetype_response: ArchetypeResponse,
     followers: list,
     target_time: datetime,
+    id_alloc: _IdAllocator,
 ) -> tuple[list[dict], list[dict]]:
     """Generate follower variations via gpt-4.1-mini.
 
@@ -264,7 +312,7 @@ async def _generate_follower_variations(
     -------
     tuple[list[dict], list[dict]]
         (follower_updates, post_dicts) — ready for batch_update_followers
-        and create_post respectively.
+        and batch_insert_posts respectively.
     """
     prompt = build_follower_variation_prompt(
         archetype, archetype_response, followers
@@ -288,11 +336,7 @@ async def _generate_follower_variations(
         return [], []
 
     updates = []
-    posts = []
-    next_post_id = await queries.get_max_id(
-        db, queries.Post, session_id, "post_id"
-    )
-
+    raw_posts = []
     follower_map = {f.follower_id: f for f in followers}
 
     for var in batch.variations:
@@ -304,28 +348,32 @@ async def _generate_follower_variations(
         # Calculate new happiness (clamped 0-1)
         new_happiness = max(0.0, min(1.0, follower.happiness + var.happiness_delta))
 
-        update: dict = {
+        update_dict: dict = {
             "session_id": session_id,
             "follower_id": var.follower_id,
             "happiness": new_happiness,
         }
 
         if var.position:
-            update["position"] = var.position
+            update_dict["position"] = var.position
 
-        updates.append(update)
+        updates.append(update_dict)
 
-        # Create post if tweet text provided
+        # Collect post without ID (will allocate in bulk)
         if var.tweet_text:
-            posts.append(
+            raw_posts.append(
                 {
                     "session_id": session_id,
-                    "post_id": next_post_id,
                     "follower_id": var.follower_id,
                     "text": var.tweet_text,
                     "virtual_time": target_time,
                 }
             )
-            next_post_id += 1
 
-    return updates, posts
+    # Bulk-allocate post IDs (race-safe)
+    if raw_posts:
+        post_start = await id_alloc.allocate_post_ids(len(raw_posts))
+        for i, post in enumerate(raw_posts):
+            post["post_id"] = post_start + i
+
+    return updates, raw_posts

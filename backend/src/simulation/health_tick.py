@@ -34,7 +34,14 @@ async def run_health_tick(session_id: uuid.UUID) -> dict:
         and total_health_changes counts.
     """
     async with AsyncSessionLocal() as db:
-        archetypes = await queries.get_archetypes_for_session(db, session_id)
+        # Load ALL followers once (avoids double-load across contagious + non-contagious)
+        all_followers = await queries.get_all_followers_for_session(db, session_id)
+
+        # Group followers by archetype for contagious processing
+        from collections import defaultdict
+        by_archetype: dict[int, list] = defaultdict(list)
+        for f in all_followers:
+            by_archetype[f.archetype_id].append(f)
 
         contagious_updates: list[dict] = []
         noncontagious_updates: list[dict] = []
@@ -49,11 +56,7 @@ async def run_health_tick(session_id: uuid.UUID) -> dict:
             rate = disease["transmission_rate_per_day"]
             disease_name = disease["name"]
 
-            for archetype in archetypes:
-                followers = await queries.get_followers_by_archetype(
-                    db, session_id, archetype.archetype_id
-                )
-
+            for _arch_id, followers in by_archetype.items():
                 infected = [
                     f
                     for f in followers
@@ -68,9 +71,10 @@ async def run_health_tick(session_id: uuid.UUID) -> dict:
                 if not infected or not healthy:
                     continue
 
+                # Precompute transmission probability once per archetype
+                transmission_prob = 1 - (1 - rate) ** len(infected)
+
                 for healthy_follower in healthy:
-                    # Probability = 1 - (1-rate)^num_infected
-                    transmission_prob = 1 - (1 - rate) ** len(infected)
                     if random.random() < transmission_prob:
                         new_ailments = list(healthy_follower.status_ailments or [])
                         new_ailments.append(disease_name)
@@ -85,13 +89,6 @@ async def run_health_tick(session_id: uuid.UUID) -> dict:
         # ------------------------------------------------------------------
         # 2. Non-contagious diseases — background incidence
         # ------------------------------------------------------------------
-        all_followers = []
-        for archetype in archetypes:
-            followers = await queries.get_followers_by_archetype(
-                db, session_id, archetype.archetype_id
-            )
-            all_followers.extend(followers)
-
         for disease in DISEASE_CONFIGS:
             if disease.get("is_contagious", False):
                 continue

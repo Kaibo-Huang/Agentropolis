@@ -2,6 +2,7 @@ import type {
   ArchetypeListResponse,
   EventResponse,
   FollowerListResponse,
+  FollowerResponse,
   InjectEventRequest,
   PostListResponse,
   SessionConfig,
