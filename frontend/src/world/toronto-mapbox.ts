@@ -277,7 +277,21 @@ function buildFollowerGeoJSON(
   return { type: "FeatureCollection", features };
 }
 
-function setupFollowerLayer(map: mapboxgl.Map, followers: MapFollower[]): void {
+/** Interpolate skin tone 0–1 to hex (light → dark). */
+function skinToneToHex(t: number): string {
+  const light = [0xf5, 0xe6, 0xd3];
+  const dark = [0x2d, 0x1f, 0x14];
+  const r = Math.round(light[0] + (dark[0] - light[0]) * t);
+  const g = Math.round(light[1] + (dark[1] - light[1]) * t);
+  const b = Math.round(light[2] + (dark[2] - light[2]) * t);
+  return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+}
+
+/** Add Mapbox built-in circle layer for followers (avatar color from properties). */
+function setupFollowerLayer(
+  map: mapboxgl.Map,
+  followers: MapFollower[],
+): void {
   if (map.getSource("followers")) return;
   map.addSource("followers", {
     type: "geojson",
@@ -287,9 +301,12 @@ function setupFollowerLayer(map: mapboxgl.Map, followers: MapFollower[]): void {
     id: "followers-layer",
     type: "circle",
     source: "followers",
+    minzoom: 12,
     paint: {
       "circle-radius": [
-        "interpolate", ["linear"], ["zoom"],
+        "interpolate",
+        ["linear"],
+        ["zoom"],
         12, 2,
         15, 5,
         18, 8,
@@ -298,9 +315,11 @@ function setupFollowerLayer(map: mapboxgl.Map, followers: MapFollower[]): void {
       "circle-stroke-width": 1.5,
       "circle-stroke-color": "rgba(255,255,255,0.9)",
       "circle-opacity": [
-        "interpolate", ["linear"], ["get", "happiness"],
+        "interpolate",
+        ["linear"],
+        ["get", "happiness"],
         0, 0.4,
-        1, 1.0,
+        1, 1,
       ],
     },
   });
@@ -382,16 +401,18 @@ export class TorontoMapboxScene {
   private animationId: number = 0;
   private currentStyle: "light" | "dark" = "light";
   private readonly buildingColors: BuildingColorPalette;
+  private followers: MapFollower[] = [];
+  private container: HTMLElement;
   private userInteracting: boolean = false;
   private dragPos: { x: number; y: number } | null = null;
   private onMouseMove: ((e: MouseEvent) => void) | null = null;
   private onMouseUp: (() => void) | null = null;
-  private _lastPitch: number = 40;
-  private _lastBearing: number = -20;
-  private _lastFollowers: MapFollower[] | null = null;
+  private onWheel: ((e: WheelEvent) => void) | null = null;
+  private lastFollowers: MapFollower[] = [];
 
   constructor(options: TorontoMapboxOptions) {
     const { container, buildingColors } = options;
+    this.container = container;
     this.buildingColors = buildingColors ?? DEFAULT_BUILDING_PALETTE;
     const env = (typeof import.meta !== "undefined" && (import.meta as { env?: Record<string, string> }).env) || {};
     const token = env.VITE_MAPBOX_ACCESS_TOKEN || "";
@@ -418,10 +439,10 @@ export class TorontoMapboxScene {
       maxPitch: 60,
       bearing: -20,
       antialias: true,
-      // Constrains the map center — tight box around downtown Toronto
+      // Downtown Toronto core: Bathurst → DVP, waterfront → Bloor
       maxBounds: [
-        [-79.52, 43.60], // SW: roughly Etobicoke / lakeshore
-        [-79.25, 43.72], // NE: roughly Don Valley / north of Bloor
+        [-79.42, 43.62], // SW: Bathurst & lakeshore
+        [-79.32, 43.69], // NE: DVP & Bloor
       ],
     });
 
@@ -437,11 +458,23 @@ export class TorontoMapboxScene {
       container.style.cursor = "grabbing";
     });
 
+    const BOUNDS_W = -79.42, BOUNDS_E = -79.32, BOUNDS_S = 43.62, BOUNDS_N = 43.69;
+    const clampCenter = () => {
+      if (!this.map) return;
+      const c = this.map.getCenter();
+      const lng = Math.max(BOUNDS_W, Math.min(BOUNDS_E, c.lng));
+      const lat = Math.max(BOUNDS_S, Math.min(BOUNDS_N, c.lat));
+      if (lng !== c.lng || lat !== c.lat) {
+        this.map.setCenter([lng, lat]);
+      }
+    };
+
     this.onMouseMove = (e: MouseEvent) => {
       if (!this.dragPos || !this.map) return;
       const dx = e.clientX - this.dragPos.x;
       const dy = e.clientY - this.dragPos.y;
       this.map.panBy([-dx, -dy], { duration: 0 });
+      clampCenter();
       this.dragPos = { x: e.clientX, y: e.clientY };
     };
 
@@ -455,24 +488,47 @@ export class TorontoMapboxScene {
     window.addEventListener("mousemove", this.onMouseMove);
     window.addEventListener("mouseup", this.onMouseUp);
 
-    // Pause day-cycle animation while the user is dragging/rotating
-    this.map.on("rotatestart", () => { this.userInteracting = true; });
-    this.map.on("rotateend", () => { this.userInteracting = false; });
+    // Pause day-cycle pitch/bearing animation during any user interaction
+    // (drag, rotate, zoom) so setPitch/setBearing don't interrupt easeTo animations.
+    const startInteract = () => { this.userInteracting = true; };
+    const endInteract = () => { this.userInteracting = false; };
+    this.map.on("dragstart", startInteract);
+    this.map.on("dragend", endInteract);
+    this.map.on("rotatestart", startInteract);
+    this.map.on("rotateend", endInteract);
+    this.map.on("zoomstart", startInteract);
+    this.map.on("zoomend", endInteract);
+
+    // Disable Mapbox's built-in scroll zoom — it drifts north on pitched maps
+    // because it zooms toward the raycasted ground point under the cursor.
+    // Replace with a center-based zoom that uses easeTo so it never drifts.
+    // Disable Mapbox's built-in scroll zoom (drifts north on pitched maps).
+    // Use jumpTo so rapid events accumulate instantly without interrupting each other.
+    this.map.scrollZoom.disable();
+    this.onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      if (!this.map) return;
+      let delta: number;
+      if (e.deltaMode === 0)      delta = -e.deltaY * 0.008;  // trackpad pixels
+      else if (e.deltaMode === 1) delta = -e.deltaY * 0.4;    // mouse wheel lines
+      else                        delta = -e.deltaY * 1.5;    // pages
+      const next = Math.min(18, Math.max(13, this.map.getZoom() + delta));
+      this.map.jumpTo({ zoom: next });
+    };
+    container.addEventListener("wheel", this.onWheel, { passive: false });
 
     this.map.on("load", () => {
       if (!this.map) return;
-      // Enforce zoom limits after load so scroll wheel also respects them
       this.map.setMinZoom(13);
       this.map.setMaxZoom(18);
-      setup3D(this.map, this.buildingColors);
-      setupFollowerLayer(this.map, []);
     });
 
+    // style.load fires on every style (re)load — re-add custom layers each time,
+    // restoring the last known followers so dots don't disappear.
     this.map.on("style.load", () => {
-      if (this.map) {
-        setup3D(this.map, this.buildingColors);
-        setupFollowerLayer(this.map, []);
-      }
+      if (!this.map) return;
+      setup3D(this.map, this.buildingColors);
+      setupFollowerLayer(this.map, this.lastFollowers);
     });
   }
 
@@ -481,26 +537,6 @@ export class TorontoMapboxScene {
     const timeOfDay = hourOfDay / 24;
     const isNight = timeOfDay < 0.25 || timeOfDay > 0.75;
     const mode = isNight ? "dark" : "light";
-
-    // Soft camera motion over the day — paused while the user is dragging/rotating.
-    if (!this.userInteracting) {
-      const basePitch = 40;
-      const pitchWobble = Math.cos(timeOfDay * Math.PI * 2) * 3;
-      const targetPitch = basePitch + pitchWobble;
-
-      const baseBearing = -20;
-      const bearingDrift = Math.sin(timeOfDay * Math.PI * 2) * 6;
-      const targetBearing = baseBearing + bearingDrift;
-
-      // Only update when values change meaningfully (avoids forcing Mapbox re-render)
-      if (Math.abs(targetPitch - this._lastPitch) > 0.05 ||
-          Math.abs(targetBearing - this._lastBearing) > 0.05) {
-        this.map.setPitch(targetPitch);
-        this.map.setBearing(targetBearing);
-        this._lastPitch = targetPitch;
-        this._lastBearing = targetBearing;
-      }
-    }
 
     // Atmospheric fog for day/night mood.
     if (this.currentStyle !== mode) {
@@ -528,8 +564,8 @@ export class TorontoMapboxScene {
   setFollowers(followers: MapFollower[]): void {
     if (!this.map) return;
     // Skip rebuild if same reference (no change)
-    if (followers === this._lastFollowers) return;
-    this._lastFollowers = followers;
+    if (followers === this.lastFollowers) return;
+    this.lastFollowers = followers;
     const source = this.map.getSource("followers");
     if (source && "setData" in source) {
       (source as mapboxgl.GeoJSONSource).setData(buildFollowerGeoJSON(followers));
@@ -548,6 +584,9 @@ export class TorontoMapboxScene {
     cancelAnimationFrame(this.animationId);
     if (this.onMouseMove) window.removeEventListener("mousemove", this.onMouseMove);
     if (this.onMouseUp) window.removeEventListener("mouseup", this.onMouseUp);
+    if (this.onWheel && this.map) {
+      this.map.getContainer().removeEventListener("wheel", this.onWheel);
+    }
     if (this.map) {
       this.map.remove();
       this.map = null;
