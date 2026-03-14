@@ -263,6 +263,8 @@ async def _get_archetype_decision(
                     "session_id": session_id,
                     "archetype_id": archetype.archetype_id,
                     "region": archetype.region,
+                    "home_neighborhood": getattr(archetype, "home_neighborhood", None) or archetype.region,
+                    "work_district": getattr(archetype, "work_district", None) or archetype.region,
                     "db_session": db,
                     "virtual_time": current_time.isoformat(),
                     "actions_finish_at": actions_finish_at.isoformat(),

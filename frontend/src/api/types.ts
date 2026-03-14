@@ -74,6 +74,8 @@ export interface ArchetypeResponse {
   industry: string;
   social_class: string | null;
   region: string;
+  home_neighborhood: string | null;
+  work_district: string | null;
   follower_count: number;
 }
 
