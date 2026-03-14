@@ -405,6 +405,8 @@ export class TorontoMapboxScene {
   private dragPos: { x: number; y: number } | null = null;
   private onMouseMove: ((e: MouseEvent) => void) | null = null;
   private onMouseUp: (() => void) | null = null;
+  private onWheel: ((e: WheelEvent) => void) | null = null;
+  private lastFollowers: MapFollower[] = [];
 
   constructor(options: TorontoMapboxOptions) {
     const { container, buildingColors } = options;
@@ -435,10 +437,10 @@ export class TorontoMapboxScene {
       maxPitch: 60,
       bearing: -20,
       antialias: true,
-      // Constrains the map center — tight box around downtown Toronto
+      // Downtown Toronto core: Bathurst → DVP, waterfront → Bloor
       maxBounds: [
-        [-79.52, 43.60], // SW: roughly Etobicoke / lakeshore
-        [-79.25, 43.72], // NE: roughly Don Valley / north of Bloor
+        [-79.42, 43.62], // SW: Bathurst & lakeshore
+        [-79.32, 43.69], // NE: DVP & Bloor
       ],
     });
 
@@ -454,11 +456,23 @@ export class TorontoMapboxScene {
       container.style.cursor = "grabbing";
     });
 
+    const BOUNDS_W = -79.42, BOUNDS_E = -79.32, BOUNDS_S = 43.62, BOUNDS_N = 43.69;
+    const clampCenter = () => {
+      if (!this.map) return;
+      const c = this.map.getCenter();
+      const lng = Math.max(BOUNDS_W, Math.min(BOUNDS_E, c.lng));
+      const lat = Math.max(BOUNDS_S, Math.min(BOUNDS_N, c.lat));
+      if (lng !== c.lng || lat !== c.lat) {
+        this.map.setCenter([lng, lat]);
+      }
+    };
+
     this.onMouseMove = (e: MouseEvent) => {
       if (!this.dragPos || !this.map) return;
       const dx = e.clientX - this.dragPos.x;
       const dy = e.clientY - this.dragPos.y;
       this.map.panBy([-dx, -dy], { duration: 0 });
+      clampCenter();
       this.dragPos = { x: e.clientX, y: e.clientY };
     };
 
@@ -472,24 +486,47 @@ export class TorontoMapboxScene {
     window.addEventListener("mousemove", this.onMouseMove);
     window.addEventListener("mouseup", this.onMouseUp);
 
-    // Pause day-cycle animation while the user is dragging/rotating
-    this.map.on("rotatestart", () => { this.userInteracting = true; });
-    this.map.on("rotateend", () => { this.userInteracting = false; });
+    // Pause day-cycle pitch/bearing animation during any user interaction
+    // (drag, rotate, zoom) so setPitch/setBearing don't interrupt easeTo animations.
+    const startInteract = () => { this.userInteracting = true; };
+    const endInteract = () => { this.userInteracting = false; };
+    this.map.on("dragstart", startInteract);
+    this.map.on("dragend", endInteract);
+    this.map.on("rotatestart", startInteract);
+    this.map.on("rotateend", endInteract);
+    this.map.on("zoomstart", startInteract);
+    this.map.on("zoomend", endInteract);
+
+    // Disable Mapbox's built-in scroll zoom — it drifts north on pitched maps
+    // because it zooms toward the raycasted ground point under the cursor.
+    // Replace with a center-based zoom that uses easeTo so it never drifts.
+    // Disable Mapbox's built-in scroll zoom (drifts north on pitched maps).
+    // Use jumpTo so rapid events accumulate instantly without interrupting each other.
+    this.map.scrollZoom.disable();
+    this.onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      if (!this.map) return;
+      let delta: number;
+      if (e.deltaMode === 0)      delta = -e.deltaY * 0.008;  // trackpad pixels
+      else if (e.deltaMode === 1) delta = -e.deltaY * 0.4;    // mouse wheel lines
+      else                        delta = -e.deltaY * 1.5;    // pages
+      const next = Math.min(18, Math.max(13, this.map.getZoom() + delta));
+      this.map.jumpTo({ zoom: next });
+    };
+    container.addEventListener("wheel", this.onWheel, { passive: false });
 
     this.map.on("load", () => {
       if (!this.map) return;
-      // Enforce zoom limits after load so scroll wheel also respects them
       this.map.setMinZoom(13);
       this.map.setMaxZoom(18);
-      setup3D(this.map, this.buildingColors);
-      setupFollowerLayer(this.map, []);
     });
 
+    // style.load fires on every style (re)load — re-add custom layers each time,
+    // restoring the last known followers so dots don't disappear.
     this.map.on("style.load", () => {
-      if (this.map) {
-        setup3D(this.map, this.buildingColors);
-        setupFollowerLayer(this.map, []);
-      }
+      if (!this.map) return;
+      setup3D(this.map, this.buildingColors);
+      setupFollowerLayer(this.map, this.lastFollowers);
     });
   }
 
@@ -498,17 +535,6 @@ export class TorontoMapboxScene {
     const timeOfDay = hourOfDay / 24;
     const isNight = timeOfDay < 0.25 || timeOfDay > 0.75;
     const mode = isNight ? "dark" : "light";
-
-    // Soft camera motion over the day — paused while the user is dragging/rotating.
-    if (!this.userInteracting) {
-      const basePitch = 40;
-      const pitchWobble = Math.cos(timeOfDay * Math.PI * 2) * 3;
-      this.map.setPitch(basePitch + pitchWobble);
-
-      const baseBearing = -20;
-      const bearingDrift = Math.sin(timeOfDay * Math.PI * 2) * 6;
-      this.map.setBearing(baseBearing + bearingDrift);
-    }
 
     // Atmospheric fog for day/night mood.
     if (this.currentStyle !== mode) {
@@ -534,7 +560,7 @@ export class TorontoMapboxScene {
   }
 
   setFollowers(followers: MapFollower[]): void {
-    this.followers = followers;
+    this.lastFollowers = followers;
     if (!this.map) return;
     const source = this.map.getSource("followers");
     if (source && "setData" in source) {
@@ -552,6 +578,11 @@ export class TorontoMapboxScene {
 
   dispose(): void {
     cancelAnimationFrame(this.animationId);
+    if (this.onMouseMove) window.removeEventListener("mousemove", this.onMouseMove);
+    if (this.onMouseUp) window.removeEventListener("mouseup", this.onMouseUp);
+    if (this.onWheel && this.map) {
+      this.map.getContainer().removeEventListener("wheel", this.onWheel);
+    }
     if (this.map) {
       this.map.remove();
       this.map = null;
