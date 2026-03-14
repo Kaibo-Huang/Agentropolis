@@ -7,8 +7,7 @@ A TypeScript simulation of a city with **population**, **economy**, **public hea
 - **`CityState`** — Holds all city metrics (0–100 scales except population). Use `clampCityState()` and `DEFAULT_CITY_STATE` from `types/city-state`.
 - **Events** — `Event` has `id`, `name`, optional `description`, and a `delta` (partial changes applied to state). Use `applyEventToState()` or the engine’s `applyEvent()`.
 - **SimulationEngine** — `step()` advances one day (internal rules only); `applyEvent(event)` applies an event immediately. Optional hooks: `onStep`, `onEventApplied`.
-
-Internal daily rules (in `engine/rules.ts`): economy influences housing cost, pollution hurts health, and economy/health/pollution/housing influence public opinion. You can replace or extend these rules without changing the engine.
+- **Citizens (AI agents)** — Each **`Citizen`** has name, age, occupation, income, **personality** (risk tolerance, political leaning, trust in government), happiness, and opinion. Each step they **evaluate** the city, **decide** an action (support/oppose policy, protest, move neighborhood, change job, share opinion), and a **social network** spreads opinions between connected citizens. Use **`CitizenSimulationEngine`** to run the simulation with citizens; their actions apply small deltas to city metrics.
 
 ## Setup
 
@@ -38,12 +37,43 @@ engine.runDays(30);
 console.log(engine.state);
 ```
 
+### With AI citizens
+
+```ts
+import {
+  CitizenSimulationEngine,
+  DEFAULT_CITY_STATE,
+  createSampleCitizens,
+  SAMPLE_EVENTS,
+} from "genai-genesis";
+
+const { citizens, socialNetwork } = createSampleCitizens(20, { averageDegree: 3 });
+const engine = new CitizenSimulationEngine(DEFAULT_CITY_STATE, {
+  citizens,
+  socialNetwork,
+  hooks: {
+    onCitizenAction(id, action, delta, day) {
+      console.log(`Day ${day}: ${id} did ${action.type}`, delta);
+    },
+  },
+});
+
+engine.step(); // Citizens evaluate, decide, act; opinions spread
+engine.applyEvent(SAMPLE_EVENTS.recession);
+engine.runDays(7);
+console.log(engine.state);
+for (const c of engine.citizens.values()) {
+  console.log(c.snapshot());
+}
+```
+
 ## Extending with AI agents
 
 - **Read state**: `engine.state` (read-only).
 - **Act**: Call `engine.applyEvent({ id, name, description?, delta })` with agent-chosen or generated events.
 - **Observe**: Use `onStep` and `onEventApplied` to feed state and outcomes back to the agent.
 - **Custom rules**: Replace or wrap `computeDailyUpdate` in `engine/rules.ts` for different dynamics.
+- **Citizens**: Use `decideAction`, `evaluateCityStateForCitizen`, and `SocialNetwork.spreadOpinions` to plug in custom decision logic or different graph models.
 
 ## License
 
