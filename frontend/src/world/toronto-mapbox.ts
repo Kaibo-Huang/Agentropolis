@@ -463,7 +463,7 @@ export class TorontoMapboxScene {
       accessToken: token,
       style: "mapbox://styles/mapbox/standard",
       center: TORONTO_CENTER,
-      zoom: 14,
+      zoom: 15.2,
       minZoom: 13,
       maxZoom: 18,
       pitch: 40,
