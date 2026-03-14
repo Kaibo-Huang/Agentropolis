@@ -7,12 +7,26 @@ import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import type { LngLat } from "../api/types.js";
 
+/** Resolved avatar params for rendering (from seed or custom). */
+export interface MapFollowerAvatar {
+  skinTone: number;
+  bodyType: string;
+  hairTexture: string;
+  hairStyle: string;
+  hairColor: string;
+  outfit: string;
+  outfitColor: string;
+  accessories: string[];
+}
+
 export interface MapFollower {
   follower_id: number;
   archetype_id: number;
   name: string;
   position: LngLat | null;
   happiness: number;
+  /** Resolved avatar params for future avatar layer; undefined if not resolved */
+  avatar?: MapFollowerAvatar;
 }
 
 /** Hex colors for building height gradient (low → high). Default: warm to cool. */
@@ -244,12 +258,14 @@ function buildFollowerGeoJSON(
   const features: GeoJSON.Feature<GeoJSON.Point>[] = [];
   for (const f of followers) {
     if (!f.position) continue;
+    // Use avatar outfit color when resolved, else fall back to archetype color
+    const color = f.avatar?.outfitColor ?? getArchetypeColor(f.archetype_id);
     features.push({
       type: "Feature",
       properties: {
         id: f.follower_id,
         name: f.name,
-        color: getArchetypeColor(f.archetype_id),
+        color,
         happiness: f.happiness,
       },
       geometry: {

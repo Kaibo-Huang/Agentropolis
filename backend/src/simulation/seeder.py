@@ -22,6 +22,7 @@ from typing import Any
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.avatar.generator import generate_avatar_from_seed
 from src.db.models import Location, Demographic, Session as SessionModel
 from src.db.queries import (
     batch_insert_archetypes,
@@ -277,6 +278,8 @@ async def seed_session(
         for _ in range(count):
             home_pos = _random_position(region)
             work_pos = _random_position(region)
+            # Deterministic avatar seed: same (session, follower) → same avatar
+            avatar_seed = (hash((session_id, follower_id)) & 0x7FFFFFFF) or 1
             followers_data.append(
                 {
                     "session_id": session_id,
@@ -292,6 +295,8 @@ async def seed_session(
                     "status_ailments": [],
                     "happiness": 0.5,
                     "volatility": round(random.uniform(0.1, 0.9), 4),
+                    "avatar_seed": avatar_seed,
+                    "avatar_params": None,
                 }
             )
             archetype_followers[arch_id].append(follower_id)
