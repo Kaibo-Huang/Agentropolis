@@ -15,6 +15,8 @@ class ArchetypeResponse(BaseModel):
     industry: str
     social_class: str | None
     region: str
+    home_neighborhood: str | None = None
+    work_district: str | None = None
     follower_count: int
 
 
@@ -39,6 +41,8 @@ async def list_archetypes(
             industry=arch.industry,
             social_class=arch.social_class,
             region=arch.region,
+            home_neighborhood=getattr(arch, "home_neighborhood", None),
+            work_district=getattr(arch, "work_district", None),
             follower_count=count,
         )
         for arch, count in rows

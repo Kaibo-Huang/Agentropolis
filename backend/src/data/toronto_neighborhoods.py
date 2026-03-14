@@ -7,11 +7,14 @@ TORONTO_NEIGHBORHOODS: list of dicts matching the Location model schema
 NEIGHBORHOOD_BOUNDS: dict keyed by region name with bounding box values
     used for random position jitter when generating follower/company positions.
     Each entry: {"min_lat": float, "max_lat": float, "min_lng": float, "max_lng": float}
+
+NOTE: NEIGHBORHOOD_BOUNDS is kept for backward compatibility.
+New code should use toronto_zones.ALL_ZONE_BOUNDS instead.
 """
 
 # ---------------------------------------------------------------------------
-# Bounding boxes (min_lat, max_lat, min_lng, max_lng) per region
-# Used by the seeder to generate positions within a region.
+# Legacy bounding boxes — kept for backward compatibility.
+# New code should import from toronto_zones.py instead.
 # ---------------------------------------------------------------------------
 
 NEIGHBORHOOD_BOUNDS: dict[str, dict[str, float]] = {
@@ -94,57 +97,60 @@ NEIGHBORHOOD_BOUNDS: dict[str, dict[str, float]] = {
 # Each dict maps directly to Location model columns:
 #   name (str), type (str), region (str),
 #   position ([lat, lng] as list), metadata_ (dict or None)
+#
+# `region` values use the new zone names from toronto_zones.py where
+# the location falls within that zone's bounding box.
 # ---------------------------------------------------------------------------
 
 TORONTO_NEIGHBORHOODS: list[dict] = [
     # -----------------------------------------------------------------------
-    # Downtown Core
+    # Financial / St. Lawrence neighbourhood
     # -----------------------------------------------------------------------
     {
         "name": "Downtown Core",
         "type": "neighborhood",
-        "region": "Downtown Core",
+        "region": "Financial / St. Lawrence",
         "position": [43.6510, -79.3832],
         "metadata_": {"description": "The central business and cultural hub of Toronto"},
     },
     {
         "name": "City Hall",
         "type": "landmark",
-        "region": "Downtown Core",
+        "region": "Downtown Yonge / Church-Wellesley",
         "position": [43.6534, -79.3839],
         "metadata_": {"category": "government", "address": "100 Queen St W"},
     },
     {
         "name": "Eaton Centre",
         "type": "landmark",
-        "region": "Downtown Core",
+        "region": "Downtown Yonge / Church-Wellesley",
         "position": [43.6544, -79.3807],
         "metadata_": {"category": "retail", "address": "220 Yonge St"},
     },
     {
         "name": "Nathan Phillips Square",
         "type": "landmark",
-        "region": "Downtown Core",
+        "region": "Downtown Yonge / Church-Wellesley",
         "position": [43.6528, -79.3842],
         "metadata_": {"category": "park"},
     },
     {
         "name": "Downtown Core Community Centre",
         "type": "building",
-        "region": "Downtown Core",
+        "region": "Financial / St. Lawrence",
         "position": [43.6490, -79.3820],
         "metadata_": {"category": "gym"},
     },
     {
         "name": "St. Patrick's Market",
         "type": "building",
-        "region": "Downtown Core",
+        "region": "Financial / St. Lawrence",
         "position": [43.6515, -79.3855],
         "metadata_": {"category": "restaurant"},
     },
 
     # -----------------------------------------------------------------------
-    # Financial District
+    # Financial District (work district)
     # -----------------------------------------------------------------------
     {
         "name": "Financial District",
@@ -190,7 +196,7 @@ TORONTO_NEIGHBORHOODS: list[dict] = [
     },
 
     # -----------------------------------------------------------------------
-    # Entertainment District
+    # Entertainment District (work district)
     # -----------------------------------------------------------------------
     {
         "name": "Entertainment District",
@@ -229,465 +235,401 @@ TORONTO_NEIGHBORHOODS: list[dict] = [
     },
 
     # -----------------------------------------------------------------------
-    # Midtown
+    # Chinatown / Kensington neighbourhood
     # -----------------------------------------------------------------------
     {
-        "name": "Midtown",
+        "name": "Kensington Market",
         "type": "neighborhood",
-        "region": "Midtown",
-        "position": [43.6988, -79.3934],
-        "metadata_": {"description": "Residential and commercial midtown corridor"},
+        "region": "Chinatown / Kensington",
+        "position": [43.6547, -79.4005],
+        "metadata_": {"description": "Eclectic market neighbourhood with vintage shops and cafes"},
     },
     {
-        "name": "Mount Sinai Hospital",
+        "name": "Art Gallery of Ontario",
         "type": "landmark",
-        "region": "Midtown",
-        "position": [43.6573, -79.3905],
-        "metadata_": {"category": "hospital", "address": "600 University Ave"},
-    },
-    {
-        "name": "Women's College Hospital",
-        "type": "landmark",
-        "region": "Midtown",
-        "position": [43.6623, -79.3933],
-        "metadata_": {"category": "hospital", "address": "76 Grenville St"},
-    },
-    {
-        "name": "Yonge & Eglinton Centre",
-        "type": "landmark",
-        "region": "Midtown",
-        "position": [43.7071, -79.3986],
-        "metadata_": {"category": "retail", "address": "2300 Yonge St"},
-    },
-    {
-        "name": "Midtown Athletic Club",
-        "type": "building",
-        "region": "Midtown",
-        "position": [43.7010, -79.3955],
-        "metadata_": {"category": "gym"},
-    },
-    {
-        "name": "Davisville Park",
-        "type": "landmark",
-        "region": "Midtown",
-        "position": [43.7003, -79.3882],
-        "metadata_": {"category": "park"},
-    },
-    {
-        "name": "Midtown Café",
-        "type": "building",
-        "region": "Midtown",
-        "position": [43.6990, -79.3940],
-        "metadata_": {"category": "restaurant"},
+        "region": "Chinatown / Kensington",
+        "position": [43.6536, -79.3925],
+        "metadata_": {"category": "museum", "address": "317 Dundas St W"},
     },
 
     # -----------------------------------------------------------------------
-    # North York
+    # Downtown Yonge / Church-Wellesley neighbourhood
     # -----------------------------------------------------------------------
     {
-        "name": "North York",
-        "type": "neighborhood",
-        "region": "North York",
-        "position": [43.7615, -79.4111],
-        "metadata_": {"description": "Major suburban centre north of downtown"},
+        "name": "Dundas Square",
+        "type": "landmark",
+        "region": "Downtown Yonge / Church-Wellesley",
+        "position": [43.6561, -79.3803],
+        "metadata_": {"category": "park", "address": "Yonge-Dundas Square"},
     },
     {
-        "name": "Mel Lastman Square",
+        "name": "Allan Gardens",
         "type": "landmark",
-        "region": "North York",
-        "position": [43.7680, -79.4128],
-        "metadata_": {"category": "park", "address": "5100 Yonge St"},
-    },
-    {
-        "name": "North York Civic Centre",
-        "type": "landmark",
-        "region": "North York",
-        "position": [43.7688, -79.4131],
-        "metadata_": {"category": "government", "address": "5100 Yonge St"},
-    },
-    {
-        "name": "Fairview Mall",
-        "type": "landmark",
-        "region": "North York",
-        "position": [43.7793, -79.3440],
-        "metadata_": {"category": "retail", "address": "1800 Sheppard Ave E"},
-    },
-    {
-        "name": "North York General Hospital",
-        "type": "landmark",
-        "region": "North York",
-        "position": [43.7608, -79.3889],
-        "metadata_": {"category": "hospital", "address": "4001 Leslie St"},
-    },
-    {
-        "name": "Earl Bales Park",
-        "type": "landmark",
-        "region": "North York",
-        "position": [43.7617, -79.4377],
+        "region": "Downtown Yonge / Church-Wellesley",
+        "position": [43.6612, -79.3750],
         "metadata_": {"category": "park"},
     },
     {
-        "name": "North York Fitness Centre",
-        "type": "building",
-        "region": "North York",
-        "position": [43.7620, -79.4115],
-        "metadata_": {"category": "gym"},
+        "name": "Ryerson / TMU Campus",
+        "type": "landmark",
+        "region": "Downtown Yonge / Church-Wellesley",
+        "position": [43.6577, -79.3790],
+        "metadata_": {"category": "education", "address": "350 Victoria St"},
     },
 
     # -----------------------------------------------------------------------
-    # Scarborough
+    # Queen West / Trinity-Bellwoods neighbourhood
     # -----------------------------------------------------------------------
     {
-        "name": "Scarborough",
-        "type": "neighborhood",
-        "region": "Scarborough",
-        "position": [43.7731, -79.2578],
-        "metadata_": {"description": "East Toronto's diverse suburban district"},
-    },
-    {
-        "name": "Scarborough Town Centre",
+        "name": "Trinity Bellwoods Park",
         "type": "landmark",
-        "region": "Scarborough",
-        "position": [43.7750, -79.2577],
-        "metadata_": {"category": "retail", "address": "300 Borough Dr"},
-    },
-    {
-        "name": "Scarborough Civic Centre",
-        "type": "landmark",
-        "region": "Scarborough",
-        "position": [43.7737, -79.2570],
-        "metadata_": {"category": "government", "address": "150 Borough Dr"},
-    },
-    {
-        "name": "Rouge National Urban Park",
-        "type": "landmark",
-        "region": "Scarborough",
-        "position": [43.8082, -79.1723],
+        "region": "Queen West / Trinity-Bellwoods",
+        "position": [43.6472, -79.4135],
         "metadata_": {"category": "park"},
     },
     {
-        "name": "Scarborough Health Network",
-        "type": "landmark",
-        "region": "Scarborough",
-        "position": [43.7626, -79.2369],
-        "metadata_": {"category": "hospital", "address": "3050 Lawrence Ave E"},
-    },
-    {
-        "name": "Scarborough Factory Lofts",
+        "name": "Queen West Art Crawl",
         "type": "building",
-        "region": "Scarborough",
-        "position": [43.7680, -79.2800],
-        "metadata_": {"category": "manufacturing"},
-    },
-    {
-        "name": "Scarborough Recreation Centre",
-        "type": "building",
-        "region": "Scarborough",
-        "position": [43.7700, -79.2600],
-        "metadata_": {"category": "gym"},
-    },
-
-    # -----------------------------------------------------------------------
-    # Etobicoke
-    # -----------------------------------------------------------------------
-    {
-        "name": "Etobicoke",
-        "type": "neighborhood",
-        "region": "Etobicoke",
-        "position": [43.6205, -79.5132],
-        "metadata_": {"description": "West Toronto borough with industrial and residential areas"},
-    },
-    {
-        "name": "Sherway Gardens",
-        "type": "landmark",
-        "region": "Etobicoke",
-        "position": [43.6098, -79.5545],
-        "metadata_": {"category": "retail", "address": "25 The West Mall"},
-    },
-    {
-        "name": "Humber River Hospital",
-        "type": "landmark",
-        "region": "Etobicoke",
-        "position": [43.7332, -79.5458],
-        "metadata_": {"category": "hospital", "address": "1235 Wilson Ave"},
-    },
-    {
-        "name": "Centennial Park",
-        "type": "landmark",
-        "region": "Etobicoke",
-        "position": [43.6384, -79.5583],
-        "metadata_": {"category": "park"},
-    },
-    {
-        "name": "Etobicoke Industrial Park",
-        "type": "building",
-        "region": "Etobicoke",
-        "position": [43.6220, -79.5150],
-        "metadata_": {"category": "manufacturing"},
-    },
-    {
-        "name": "Etobicoke Olympium",
-        "type": "building",
-        "region": "Etobicoke",
-        "position": [43.6370, -79.5380],
-        "metadata_": {"category": "gym"},
-    },
-    {
-        "name": "The Kingsway Restaurant Row",
-        "type": "building",
-        "region": "Etobicoke",
-        "position": [43.6502, -79.5070],
-        "metadata_": {"category": "restaurant"},
-    },
-
-    # -----------------------------------------------------------------------
-    # Waterfront
-    # -----------------------------------------------------------------------
-    {
-        "name": "Waterfront",
-        "type": "neighborhood",
-        "region": "Waterfront",
-        "position": [43.6390, -79.3812],
-        "metadata_": {"description": "Toronto's Lake Ontario waterfront district"},
-    },
-    {
-        "name": "Harbourfront Centre",
-        "type": "landmark",
-        "region": "Waterfront",
-        "position": [43.6387, -79.3806],
-        "metadata_": {"category": "park", "address": "235 Queens Quay W"},
-    },
-    {
-        "name": "Toronto Islands Ferry Terminal",
-        "type": "landmark",
-        "region": "Waterfront",
-        "position": [43.6415, -79.3762],
-        "metadata_": {"category": "transit", "address": "9 Queens Quay W"},
-    },
-    {
-        "name": "Sugar Beach",
-        "type": "landmark",
-        "region": "Waterfront",
-        "position": [43.6428, -79.3682],
-        "metadata_": {"category": "park"},
-    },
-    {
-        "name": "Waterfront Café & Bar",
-        "type": "building",
-        "region": "Waterfront",
-        "position": [43.6380, -79.3820],
-        "metadata_": {"category": "restaurant"},
-    },
-    {
-        "name": "Waterfront Fitness",
-        "type": "building",
-        "region": "Waterfront",
-        "position": [43.6395, -79.3790],
-        "metadata_": {"category": "gym"},
-    },
-
-    # -----------------------------------------------------------------------
-    # Yorkville
-    # -----------------------------------------------------------------------
-    {
-        "name": "Yorkville",
-        "type": "neighborhood",
-        "region": "Yorkville",
-        "position": [43.6709, -79.3932],
-        "metadata_": {"description": "Upscale shopping and dining district"},
-    },
-    {
-        "name": "Bloor-Yorkville Shopping District",
-        "type": "landmark",
-        "region": "Yorkville",
-        "position": [43.6716, -79.3930],
+        "region": "Queen West / Trinity-Bellwoods",
+        "position": [43.6475, -79.4050],
         "metadata_": {"category": "retail"},
     },
     {
-        "name": "Royal Ontario Museum",
-        "type": "landmark",
-        "region": "Yorkville",
-        "position": [43.6677, -79.3948],
-        "metadata_": {"category": "museum", "address": "100 Queens Park"},
-    },
-    {
-        "name": "Hazelton Lanes",
+        "name": "Ossington Strip",
         "type": "building",
-        "region": "Yorkville",
-        "position": [43.6738, -79.3959],
-        "metadata_": {"category": "retail", "address": "55 Avenue Rd"},
-    },
-    {
-        "name": "Yorkville Village Spa & Fitness",
-        "type": "building",
-        "region": "Yorkville",
-        "position": [43.6720, -79.3945],
-        "metadata_": {"category": "gym"},
-    },
-    {
-        "name": "Sassafraz Restaurant",
-        "type": "building",
-        "region": "Yorkville",
-        "position": [43.6729, -79.3962],
-        "metadata_": {"category": "restaurant", "address": "100 Cumberland St"},
-    },
-    {
-        "name": "Ramsden Park",
-        "type": "landmark",
-        "region": "Yorkville",
-        "position": [43.6757, -79.3913],
-        "metadata_": {"category": "park"},
+        "region": "Queen West / Trinity-Bellwoods",
+        "position": [43.6488, -79.4200],
+        "metadata_": {"category": "restaurant"},
     },
 
     # -----------------------------------------------------------------------
-    # Liberty Village
+    # Liberty Village / Exhibition neighbourhood
     # -----------------------------------------------------------------------
     {
         "name": "Liberty Village",
         "type": "neighborhood",
-        "region": "Liberty Village",
+        "region": "Liberty Village / Exhibition",
         "position": [43.6382, -79.4209],
         "metadata_": {"description": "Trendy tech and creative industry hub"},
     },
     {
         "name": "Liberty Village Office Campus",
         "type": "building",
-        "region": "Liberty Village",
+        "region": "Liberty Village / Exhibition",
         "position": [43.6388, -79.4198],
         "metadata_": {"category": "office"},
     },
     {
         "name": "Ernest Thompson Park",
         "type": "landmark",
-        "region": "Liberty Village",
+        "region": "Liberty Village / Exhibition",
         "position": [43.6375, -79.4220],
         "metadata_": {"category": "park"},
     },
     {
         "name": "F45 Training Liberty Village",
         "type": "building",
-        "region": "Liberty Village",
+        "region": "Liberty Village / Exhibition",
         "position": [43.6380, -79.4205],
         "metadata_": {"category": "gym"},
     },
     {
         "name": "The Brazen Head Liberty Village",
         "type": "building",
-        "region": "Liberty Village",
+        "region": "Liberty Village / Exhibition",
         "position": [43.6392, -79.4215],
         "metadata_": {"category": "restaurant"},
     },
     {
         "name": "Liberty Market Building",
         "type": "building",
-        "region": "Liberty Village",
+        "region": "Liberty Village / Exhibition",
         "position": [43.6371, -79.4218],
         "metadata_": {"category": "office", "address": "171 East Liberty St"},
     },
 
     # -----------------------------------------------------------------------
-    # Queen's Park
+    # Government District (work district)
     # -----------------------------------------------------------------------
     {
         "name": "Queen's Park",
         "type": "district",
-        "region": "Queen's Park",
+        "region": "Government District",
         "position": [43.6600, -79.3922],
         "metadata_": {"description": "Provincial government and legislative district"},
     },
     {
         "name": "Ontario Legislative Assembly",
         "type": "landmark",
-        "region": "Queen's Park",
+        "region": "Government District",
         "position": [43.6627, -79.3929],
         "metadata_": {"category": "government", "address": "Queen's Park"},
     },
     {
         "name": "Queen's Park Green",
         "type": "landmark",
-        "region": "Queen's Park",
+        "region": "Government District",
         "position": [43.6614, -79.3920],
         "metadata_": {"category": "park"},
     },
     {
         "name": "Ontario Government Offices",
         "type": "building",
-        "region": "Queen's Park",
+        "region": "Government District",
         "position": [43.6590, -79.3885],
         "metadata_": {"category": "government", "address": "900 Bay St"},
     },
     {
         "name": "Ministry of Finance Building",
         "type": "building",
-        "region": "Queen's Park",
+        "region": "Government District",
         "position": [43.6581, -79.3897],
         "metadata_": {"category": "government", "address": "Frost Building"},
     },
     {
         "name": "Queen's Park Café",
         "type": "building",
-        "region": "Queen's Park",
+        "region": "Government District",
         "position": [43.6605, -79.3935],
         "metadata_": {"category": "restaurant"},
     },
 
     # -----------------------------------------------------------------------
-    # University District
+    # UofT District (work district)
     # -----------------------------------------------------------------------
     {
         "name": "University District",
         "type": "district",
-        "region": "University District",
+        "region": "UofT District",
         "position": [43.6629, -79.3957],
         "metadata_": {"description": "Post-secondary education corridor"},
     },
     {
         "name": "University of Toronto - St. George Campus",
         "type": "landmark",
-        "region": "University District",
+        "region": "UofT District",
         "position": [43.6629, -79.3957],
         "metadata_": {"category": "education", "address": "27 King's College Cir"},
     },
     {
         "name": "Hart House",
         "type": "landmark",
-        "region": "University District",
+        "region": "UofT District",
         "position": [43.6648, -79.3961],
         "metadata_": {"category": "education", "address": "7 Hart House Cir"},
     },
     {
         "name": "Robarts Library",
         "type": "landmark",
-        "region": "University District",
+        "region": "UofT District",
         "position": [43.6645, -79.3992],
         "metadata_": {"category": "education", "address": "130 St George St"},
     },
     {
-        "name": "University Health Network - Toronto General",
-        "type": "landmark",
-        "region": "University District",
-        "position": [43.6591, -79.3877],
-        "metadata_": {"category": "hospital", "address": "200 Elizabeth St"},
-    },
-    {
         "name": "Athletic Centre UofT",
         "type": "building",
-        "region": "University District",
+        "region": "UofT District",
         "position": [43.6618, -79.3972],
         "metadata_": {"category": "gym", "address": "55 Harbord St"},
     },
     {
         "name": "Victoria College Dining Hall",
         "type": "building",
-        "region": "University District",
+        "region": "UofT District",
         "position": [43.6657, -79.3930],
         "metadata_": {"category": "restaurant"},
     },
     {
         "name": "Bahen Centre for Information Technology",
         "type": "building",
-        "region": "University District",
+        "region": "UofT District",
         "position": [43.6597, -79.3978],
         "metadata_": {"category": "education", "address": "40 St George St"},
+    },
+
+    # -----------------------------------------------------------------------
+    # Hospital Row (work district)
+    # -----------------------------------------------------------------------
+    {
+        "name": "University Health Network - Toronto General",
+        "type": "landmark",
+        "region": "Hospital Row",
+        "position": [43.6591, -79.3877],
+        "metadata_": {"category": "hospital", "address": "200 Elizabeth St"},
+    },
+    {
+        "name": "Mount Sinai Hospital",
+        "type": "landmark",
+        "region": "Hospital Row",
+        "position": [43.6573, -79.3905],
+        "metadata_": {"category": "hospital", "address": "600 University Ave"},
+    },
+    {
+        "name": "SickKids Hospital",
+        "type": "landmark",
+        "region": "Hospital Row",
+        "position": [43.6568, -79.3877],
+        "metadata_": {"category": "hospital", "address": "555 University Ave"},
+    },
+    {
+        "name": "Princess Margaret Cancer Centre",
+        "type": "landmark",
+        "region": "Hospital Row",
+        "position": [43.6583, -79.3865],
+        "metadata_": {"category": "hospital", "address": "610 University Ave"},
+    },
+
+    # -----------------------------------------------------------------------
+    # TMU District (work district)
+    # -----------------------------------------------------------------------
+    {
+        "name": "TMU Student Learning Centre",
+        "type": "landmark",
+        "region": "TMU District",
+        "position": [43.6579, -79.3790],
+        "metadata_": {"category": "education", "address": "341 Yonge St"},
+    },
+    {
+        "name": "Yonge-Dundas Square",
+        "type": "landmark",
+        "region": "TMU District",
+        "position": [43.6561, -79.3803],
+        "metadata_": {"category": "retail", "address": "1 Dundas St E"},
+    },
+    {
+        "name": "TMU Image Arts Centre",
+        "type": "building",
+        "region": "TMU District",
+        "position": [43.6588, -79.3795],
+        "metadata_": {"category": "education", "address": "122 Bond St"},
+    },
+
+    # -----------------------------------------------------------------------
+    # Tech Corridor (work district)
+    # -----------------------------------------------------------------------
+    {
+        "name": "MaRS Discovery District",
+        "type": "landmark",
+        "region": "Tech Corridor",
+        "position": [43.6601, -79.3903],
+        "metadata_": {"category": "office", "address": "101 College St"},
+    },
+
+    # -----------------------------------------------------------------------
+    # CNE / Exhibition Place (work district)
+    # -----------------------------------------------------------------------
+    {
+        "name": "Exhibition Place",
+        "type": "landmark",
+        "region": "CNE / Exhibition Place",
+        "position": [43.6363, -79.4186],
+        "metadata_": {"category": "event_venue", "address": "Exhibition Place"},
+    },
+    {
+        "name": "BMO Field",
+        "type": "landmark",
+        "region": "CNE / Exhibition Place",
+        "position": [43.6332, -79.4186],
+        "metadata_": {"category": "stadium", "address": "170 Princes' Blvd"},
+    },
+    {
+        "name": "Enercare Centre",
+        "type": "building",
+        "region": "CNE / Exhibition Place",
+        "position": [43.6342, -79.4145],
+        "metadata_": {"category": "event_venue", "address": "100 Princes' Blvd"},
+    },
+
+    # -----------------------------------------------------------------------
+    # Corktown / Distillery neighbourhood
+    # -----------------------------------------------------------------------
+    {
+        "name": "Distillery District",
+        "type": "landmark",
+        "region": "Corktown / Distillery",
+        "position": [43.6503, -79.3595],
+        "metadata_": {"category": "retail", "address": "55 Mill St"},
+    },
+    {
+        "name": "Corktown Common",
+        "type": "landmark",
+        "region": "Corktown / Distillery",
+        "position": [43.6525, -79.3540],
+        "metadata_": {"category": "park"},
+    },
+
+    # -----------------------------------------------------------------------
+    # Cabbagetown / Regent Park neighbourhood
+    # -----------------------------------------------------------------------
+    {
+        "name": "Riverdale Park",
+        "type": "landmark",
+        "region": "Cabbagetown / Regent Park",
+        "position": [43.6680, -79.3595],
+        "metadata_": {"category": "park"},
+    },
+    {
+        "name": "Regent Park Community Centre",
+        "type": "building",
+        "region": "Cabbagetown / Regent Park",
+        "position": [43.6590, -79.3600],
+        "metadata_": {"category": "gym"},
+    },
+    {
+        "name": "Cabbagetown Heritage Houses",
+        "type": "building",
+        "region": "Cabbagetown / Regent Park",
+        "position": [43.6650, -79.3620],
+        "metadata_": {"category": "residential"},
+    },
+
+    # -----------------------------------------------------------------------
+    # Entertainment / Harbourfront neighbourhood
+    # -----------------------------------------------------------------------
+    {
+        "name": "Harbourfront Centre",
+        "type": "landmark",
+        "region": "Entertainment / Harbourfront",
+        "position": [43.6387, -79.3806],
+        "metadata_": {"category": "park", "address": "235 Queens Quay W"},
+    },
+    {
+        "name": "Toronto Islands Ferry Terminal",
+        "type": "landmark",
+        "region": "Entertainment / Harbourfront",
+        "position": [43.6415, -79.3762],
+        "metadata_": {"category": "transit", "address": "9 Queens Quay W"},
+    },
+    {
+        "name": "CN Tower",
+        "type": "landmark",
+        "region": "Entertainment / Harbourfront",
+        "position": [43.6426, -79.3871],
+        "metadata_": {"category": "landmark", "address": "290 Bremner Blvd"},
+    },
+
+    # -----------------------------------------------------------------------
+    # Financial / St. Lawrence neighbourhood (more locations)
+    # -----------------------------------------------------------------------
+    {
+        "name": "St. Lawrence Market",
+        "type": "landmark",
+        "region": "Financial / St. Lawrence",
+        "position": [43.6489, -79.3715],
+        "metadata_": {"category": "retail", "address": "93 Front St E"},
+    },
+    {
+        "name": "Union Station",
+        "type": "landmark",
+        "region": "Financial / St. Lawrence",
+        "position": [43.6453, -79.3806],
+        "metadata_": {"category": "transit", "address": "65 Front St W"},
+    },
+    {
+        "name": "Sugar Beach",
+        "type": "landmark",
+        "region": "Financial / St. Lawrence",
+        "position": [43.6428, -79.3682],
+        "metadata_": {"category": "park"},
     },
 ]

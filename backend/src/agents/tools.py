@@ -5,13 +5,15 @@ Each tool queries the database using shared context injected via rt.context.
 The archetype agent autonomously decides which tools to call (up to 10 per tick).
 
 Context keys expected (injected by tick_orchestrator before rt.call):
-    session_id   (uuid.UUID)  — current simulation session
-    archetype_id (int)        — archetype being processed
-    region       (str)        — archetype's geographic region
-    db_session   (AsyncSession) — active database session
-    virtual_time (str)        — current virtual time ISO string
-    actions_finish_at (str)   — when previous actions finish ISO string
-    next_tick_time    (str)   — next tick target time ISO string
+    session_id        (uuid.UUID)  — current simulation session
+    archetype_id      (int)        — archetype being processed
+    region            (str)        — archetype's geographic region (legacy, kept for compat)
+    home_neighborhood (str)        — residential neighborhood name
+    work_district     (str)        — work district name
+    db_session        (AsyncSession) — active database session
+    virtual_time      (str)        — current virtual time ISO string
+    actions_finish_at (str)        — when previous actions finish ISO string
+    next_tick_time    (str)        — next tick target time ISO string
 """
 
 from __future__ import annotations
@@ -74,14 +76,20 @@ async def get_follower_stats() -> str:
 
 
 @rt.function_node
-async def get_nearby_locations(location_type: str = "all") -> str:
-    """Get locations in this archetype's geographic region.
+async def get_nearby_locations(zone: str = "work", location_type: str = "all") -> str:
+    """Get locations near this archetype's home neighborhood or work district.
     Returns a JSON list of locations with name, type, and position.
 
     Args:
+        zone (str): 'work' for work district locations, 'home' for home neighborhood locations. Defaults to 'work'.
         location_type (str): Filter by type: 'neighborhood', 'district', 'building', 'landmark', or 'all'.
     """
-    region = rt.context.get("region")
+    if zone == "home":
+        region = rt.context.get("home_neighborhood") or rt.context.get("region")
+    else:
+        region = rt.context.get("work_district") or rt.context.get("region")
+    if not region:
+        return json.dumps([])
     db = rt.context.get("db_session")
     loc_type = None if location_type == "all" else location_type
     locations = await queries.get_locations_by_region(db, region, loc_type)
