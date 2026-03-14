@@ -18,7 +18,62 @@ export interface TorontoMapboxOptions {
 }
 
 // Toronto downtown
-const TORONTO_CENTER: [number, number] = [-79.3832, 43.6532];
+const TORONTO_CENTER: [number, number] = [-79.38175019453755, 43.64369424043282];
+
+/** Zoom step per click (default Mapbox is 1; smaller = less powerful). */
+const ZOOM_DELTA = 0.45;
+
+/** Custom zoom control: same look as NavigationControl but smaller step and position. */
+class GentleZoomControl {
+  private map?: mapboxgl.Map;
+  private container?: HTMLElement;
+
+  onAdd(map: mapboxgl.Map): HTMLElement {
+    this.map = map;
+    const container = document.createElement("div");
+    container.className = "mapboxgl-ctrl mapboxgl-ctrl-group";
+    container.style.marginBottom = "24px";
+
+    const zoomIn = document.createElement("button");
+    zoomIn.className = "mapboxgl-ctrl-icon mapboxgl-ctrl-zoom-in";
+    zoomIn.type = "button";
+    zoomIn.setAttribute("aria-label", "Zoom in");
+    zoomIn.innerHTML = "+";
+    zoomIn.style.fontSize = "18px";
+    zoomIn.style.fontWeight = "600";
+    zoomIn.style.lineHeight = "1";
+    zoomIn.style.backgroundImage = "none";
+    zoomIn.addEventListener("click", () => this.zoom(1));
+
+    const zoomOut = document.createElement("button");
+    zoomOut.className = "mapboxgl-ctrl-icon mapboxgl-ctrl-zoom-out";
+    zoomOut.type = "button";
+    zoomOut.setAttribute("aria-label", "Zoom out");
+    zoomOut.innerHTML = "−";
+    zoomOut.style.fontSize = "18px";
+    zoomOut.style.fontWeight = "600";
+    zoomOut.style.lineHeight = "1";
+    zoomOut.style.backgroundImage = "none";
+    zoomOut.addEventListener("click", () => this.zoom(-1));
+
+    container.append(zoomIn, zoomOut);
+    this.container = container;
+    return container;
+  }
+
+  private zoom(direction: 1 | -1): void {
+    if (!this.map) return;
+    const current = this.map.getZoom();
+    const next = Math.min(22, Math.max(0, current + direction * ZOOM_DELTA));
+    this.map.easeTo({ zoom: next, duration: 200 });
+  }
+
+  onRemove(): void {
+    this.container?.remove();
+    this.container = undefined;
+    this.map = undefined;
+  }
+}
 
 // Pedestrian paths: [lng, lat][] along streets (downtown Toronto). Each path loops.
 const PEDESTRIAN_PATHS: [number, number][][] = [
@@ -94,11 +149,11 @@ function lerpPath(path: [number, number][], t: number): [number, number] {
 
 // Default: warm (low) → cool (tall) gradient
 const DEFAULT_BUILDING_PALETTE: BuildingColorPalette = [
-  "#a8c5c9", // light teal
-  "#5a9b6e", // green
-  "#4a90a4", // blue
-  "#6b7b8c", // blue-gray
-  "#7d6e83", // mauve
+  "#ABCCA3", // light teal
+  "#CAD5AD", // green
+  "#E9DDB6", // blue
+  "#E8CCBD", // blue-gray
+  "#E6BBC3", // mauve
 ];
 
 /** Build a Mapbox interpolate expression for fill-extrusion-color by height. */
@@ -260,13 +315,13 @@ export class TorontoMapboxScene {
       accessToken: token,
       style: "mapbox://styles/mapbox/light-v11",
       center: TORONTO_CENTER,
-      zoom: 14.5,
-      pitch: 50,
-      bearing: -17,
+      zoom: 15.5,
+      pitch: 60,
+      bearing: -20,
       antialias: true,
     });
 
-    this.map.addControl(new mapboxgl.NavigationControl(), "top-right");
+    this.map.addControl(new GentleZoomControl(), "bottom-right");
 
     this.map.on("style.load", () => {
       if (this.map) {
