@@ -15,6 +15,7 @@ Usage
 
 from __future__ import annotations
 
+import logging
 import random
 import math
 from typing import Any
@@ -31,10 +32,24 @@ from src.db.queries import (
     batch_insert_relationships,
 )
 from src.data.toronto_neighborhoods import TORONTO_NEIGHBORHOODS, NEIGHBORHOOD_BOUNDS
-from src.data.industry_mapping import INDUSTRY_REGIONS, INDUSTRIES, INDUSTRY_DISTRIBUTION
+from src.data.toronto_zones import (
+    ALL_ZONE_BOUNDS,
+    RESIDENTIAL_NEIGHBORHOODS,
+    WORK_DISTRICTS,
+    NEIGHBORHOOD_NAMES,
+    _FALLBACK_POSITION,
+)
+from src.data.industry_mapping import (
+    INDUSTRY_REGIONS,
+    INDUSTRY_WORK_DISTRICTS,
+    INDUSTRY_HOME_WEIGHTS,
+    INDUSTRIES,
+    INDUSTRY_DISTRIBUTION,
+)
 from src.data.demographics import (
     SOCIAL_CLASSES,
     SOCIAL_CLASS_WEIGHTS_BY_REGION,
+    SOCIAL_CLASS_WEIGHTS_BY_NEIGHBORHOOD,
     DEFAULT_SOCIAL_CLASS_WEIGHTS,
     AGE_DISTRIBUTION,
     GENDER_DISTRIBUTION,
@@ -43,24 +58,76 @@ from src.data.demographics import (
     LAST_NAMES,
 )
 
+logger = logging.getLogger(__name__)
+
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
 
-def _random_position(region: str) -> list[float]:
-    """Return a random [lat, lng] within the bounding box for *region*."""
-    bounds = NEIGHBORHOOD_BOUNDS.get(region)
+def _random_position(zone_name: str) -> list[float]:
+    """Return a random [lat, lng] within the bounding box for *zone_name*.
+
+    Looks up the zone in the new ALL_ZONE_BOUNDS first, then falls back to
+    the legacy NEIGHBORHOOD_BOUNDS for backward compatibility. If neither
+    contains the zone, returns a Downtown Core center position with jitter
+    and logs a warning.
+    """
+    bounds = ALL_ZONE_BOUNDS.get(zone_name)
     if bounds is None:
-        # Fallback: Toronto city centre with small jitter
+        # Fallback to legacy bounds
+        bounds = NEIGHBORHOOD_BOUNDS.get(zone_name)
+    if bounds is None:
+        logger.warning(
+            "Zone %r not found in zone bounds; using fallback position", zone_name
+        )
         return [
-            43.6510 + random.uniform(-0.005, 0.005),
-            -79.3832 + random.uniform(-0.005, 0.005),
+            _FALLBACK_POSITION[0] + random.uniform(-0.005, 0.005),
+            _FALLBACK_POSITION[1] + random.uniform(-0.005, 0.005),
         ]
     lat = random.uniform(bounds["min_lat"], bounds["max_lat"])
     lng = random.uniform(bounds["min_lng"], bounds["max_lng"])
     return [round(lat, 6), round(lng, 6)]
+
+
+def _pick_home_neighborhood(industry: str) -> str:
+    """Pick a residential neighborhood for workers in *industry* using
+    INDUSTRY_HOME_WEIGHTS.  Falls back to uniform random if weights are
+    not defined for the industry.
+    """
+    weights_map = INDUSTRY_HOME_WEIGHTS.get(industry)
+    if not weights_map:
+        logger.warning(
+            "No home weights for industry %r; picking uniformly", industry
+        )
+        return random.choice(NEIGHBORHOOD_NAMES)
+
+    neighborhoods = list(weights_map.keys())
+    weights = list(weights_map.values())
+    return random.choices(neighborhoods, weights=weights, k=1)[0]
+
+
+def _pick_work_district(industry: str) -> str:
+    """Pick a work district for *industry*.
+
+    Uses new INDUSTRY_WORK_DISTRICTS first, falls back to INDUSTRY_REGIONS.
+    """
+    districts = INDUSTRY_WORK_DISTRICTS.get(industry)
+    if districts:
+        return random.choice(districts)
+
+    # Fallback to legacy mapping
+    regions = INDUSTRY_REGIONS.get(industry)
+    if regions:
+        logger.warning(
+            "Industry %r not in INDUSTRY_WORK_DISTRICTS; using legacy INDUSTRY_REGIONS",
+            industry,
+        )
+        return random.choice(regions)
+
+    logger.warning("Industry %r has no work district mapping; defaulting", industry)
+    return "Financial District"
 
 
 def _random_age() -> int:
@@ -83,8 +150,17 @@ def _random_race() -> str:
     return random.choices(races, weights=weights, k=1)[0]
 
 
-def _random_social_class(region: str) -> str:
-    weights = SOCIAL_CLASS_WEIGHTS_BY_REGION.get(region, DEFAULT_SOCIAL_CLASS_WEIGHTS)
+def _random_social_class(neighborhood: str) -> str:
+    """Pick social class based on the residential neighborhood.
+
+    Tries the new SOCIAL_CLASS_WEIGHTS_BY_NEIGHBORHOOD first, then falls
+    back to legacy SOCIAL_CLASS_WEIGHTS_BY_REGION, then DEFAULT weights.
+    """
+    weights = SOCIAL_CLASS_WEIGHTS_BY_NEIGHBORHOOD.get(neighborhood)
+    if weights is None:
+        weights = SOCIAL_CLASS_WEIGHTS_BY_REGION.get(
+            neighborhood, DEFAULT_SOCIAL_CLASS_WEIGHTS
+        )
     return random.choices(SOCIAL_CLASSES, weights=weights, k=1)[0]
 
 
@@ -228,28 +304,34 @@ async def seed_session(
     archetype_id = 1
 
     # Track archetype metadata for downstream use
-    archetype_meta: list[dict] = []  # {archetype_id, industry, region, social_class}
+    archetype_meta: list[dict] = []
 
     for industry, count in industry_archetype_counts.items():
-        regions_for_industry = INDUSTRY_REGIONS[industry]
         for _ in range(count):
-            region = random.choice(regions_for_industry)
-            social_class = _random_social_class(region)
+            work_district = _pick_work_district(industry)
+            home_neighborhood = _pick_home_neighborhood(industry)
+            social_class = _random_social_class(home_neighborhood)
+
+            # `region` is set to home_neighborhood for backward compat
             archetypes_data.append(
                 {
                     "session_id": session_id,
                     "archetype_id": archetype_id,
                     "industry": industry,
-                    "region": region,
+                    "region": home_neighborhood,
                     "social_class": social_class,
+                    "home_neighborhood": home_neighborhood,
+                    "work_district": work_district,
                 }
             )
             archetype_meta.append(
                 {
                     "archetype_id": archetype_id,
                     "industry": industry,
-                    "region": region,
+                    "region": home_neighborhood,
                     "social_class": social_class,
+                    "home_neighborhood": home_neighborhood,
+                    "work_district": work_district,
                 }
             )
             archetype_id += 1
@@ -265,7 +347,6 @@ async def seed_session(
     follower_id = 1
 
     # Also track which archetype each follower belongs to (for relationships)
-    # archetype_followers: archetype_id -> list[follower_id]
     archetype_followers: dict[int, list[int]] = {
         m["archetype_id"]: [] for m in archetype_meta
     }
@@ -273,11 +354,12 @@ async def seed_session(
     for i, meta in enumerate(archetype_meta):
         count = followers_per_archetype + (1 if i < extra else 0)
         arch_id = meta["archetype_id"]
-        region = meta["region"]
+        home_neighborhood = meta["home_neighborhood"]
+        work_district = meta["work_district"]
 
         for _ in range(count):
-            home_pos = _random_position(region)
-            work_pos = _random_position(region)
+            home_pos = _random_position(home_neighborhood)
+            work_pos = _random_position(work_district)
             # Deterministic avatar seed: same (session, follower) → same avatar
             avatar_seed = (hash((session_id, follower_id)) & 0x7FFFFFFF) or 1
             followers_data.append(
@@ -297,6 +379,8 @@ async def seed_session(
                     "volatility": round(random.uniform(0.1, 0.9), 4),
                     "avatar_seed": avatar_seed,
                     "avatar_params": None,
+                    "home_neighborhood": home_neighborhood,
+                    "work_district": work_district,
                 }
             )
             archetype_followers[arch_id].append(follower_id)
@@ -318,17 +402,17 @@ async def seed_session(
     company_id = 1
 
     for industry, count in industry_company_counts.items():
-        regions_for_industry = INDUSTRY_REGIONS[industry]
         for idx in range(count):
-            region = random.choice(regions_for_industry)
+            work_district = _pick_work_district(industry)
             companies_data.append(
                 {
                     "session_id": session_id,
                     "company_id": company_id,
                     "name": _company_name(industry, idx),
                     "industry": industry,
-                    "region": region,
-                    "position": _random_position(region),
+                    "region": work_district,  # backward compat
+                    "position": _random_position(work_district),
+                    "work_district": work_district,
                 }
             )
             company_id += 1
@@ -369,10 +453,7 @@ async def seed_session(
                     _add_rel(fids[i], fids[j], "coworker")
 
     # 5b. Cross-archetype friendships: ~5% of random cross-archetype pairs
-    #     Sample a manageable number of candidate pairs to avoid O(n^2) blowup
-    #     on large populations.
     if total_followers >= 2:
-        # Number of friendship candidates: scale with population but cap it
         num_friend_candidates = min(
             int(total_followers * (total_followers - 1) / 2 * 0.05),
             max(total_followers * 3, 100),
@@ -430,7 +511,9 @@ async def seed_session(
             is_company=False,
             industry=meta["industry"],
             social_class=meta["social_class"],
-            region=meta["region"],
+            region=meta["home_neighborhood"],
+            home_neighborhood=meta["home_neighborhood"],
+            work_district=meta["work_district"],
         )
         db.add(demo)
 
@@ -440,7 +523,9 @@ async def seed_session(
             is_company=True,
             industry=comp["industry"],
             social_class=None,
-            region=comp["region"],
+            region=comp["work_district"],
+            home_neighborhood=None,
+            work_district=comp["work_district"],
         )
         db.add(demo)
 

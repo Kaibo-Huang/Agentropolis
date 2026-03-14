@@ -106,93 +106,142 @@ const DEFAULT_BUILDING_PALETTE: BuildingColorPalette = [
   "#DBE0DC", // mauve
 ];
 
-// Downtown Toronto neighborhood polygons (GeoJSON: [lng, lat], closed ring).
-// These are rough, but aligned more closely with real districts.
-const REGIONS: Array<{ name: string; color: string; polygon: GeoJSON.Polygon }> = [
-  // Roughly King St W / Queen St W between University and Yonge
+// ── Residential Neighborhoods (8) ──
+// 100% tiling of viewable land area. Southern edges follow approx shoreline.
+// Grid: 4 cols (Spadina, Yonge, Parliament) × 2 rows (Queen St).
+const RESIDENTIAL_ZONES: Array<{ name: string; color: string; polygon: GeoJSON.Polygon }> = [
+  {
+    name: "Liberty Village / Exhibition",
+    color: "#10b981",
+    polygon: { type: "Polygon", coordinates: [[
+      [-79.420, 43.636], [-79.408, 43.635], [-79.397, 43.636],
+      [-79.397, 43.652], [-79.420, 43.652], [-79.420, 43.636],
+    ]] },
+  },
+  {
+    name: "Queen West / Trinity-Bellwoods",
+    color: "#f59e0b",
+    polygon: { type: "Polygon", coordinates: [[
+      [-79.420, 43.652], [-79.397, 43.652],
+      [-79.397, 43.690], [-79.420, 43.690], [-79.420, 43.652],
+    ]] },
+  },
+  {
+    name: "Entertainment / Harbourfront",
+    color: "#3b82f6",
+    polygon: { type: "Polygon", coordinates: [[
+      [-79.397, 43.637], [-79.390, 43.636], [-79.383, 43.637],
+      [-79.383, 43.652], [-79.397, 43.652], [-79.397, 43.637],
+    ]] },
+  },
+  {
+    name: "Chinatown / Kensington",
+    color: "#ef4444",
+    polygon: { type: "Polygon", coordinates: [[
+      [-79.397, 43.652], [-79.383, 43.652],
+      [-79.383, 43.690], [-79.397, 43.690], [-79.397, 43.652],
+    ]] },
+  },
+  {
+    name: "Financial / St. Lawrence",
+    color: "#22c55e",
+    polygon: { type: "Polygon", coordinates: [[
+      [-79.383, 43.638], [-79.375, 43.637], [-79.363, 43.638],
+      [-79.363, 43.652], [-79.383, 43.652], [-79.383, 43.638],
+    ]] },
+  },
+  {
+    name: "Downtown Yonge / Church-Wellesley",
+    color: "#a855f7",
+    polygon: { type: "Polygon", coordinates: [[
+      [-79.383, 43.652], [-79.363, 43.652],
+      [-79.363, 43.690], [-79.383, 43.690], [-79.383, 43.652],
+    ]] },
+  },
+  {
+    name: "Corktown / Distillery",
+    color: "#f97316",
+    polygon: { type: "Polygon", coordinates: [[
+      [-79.363, 43.641], [-79.350, 43.642], [-79.340, 43.644],
+      [-79.320, 43.648], [-79.320, 43.652], [-79.363, 43.652], [-79.363, 43.641],
+    ]] },
+  },
+  {
+    name: "Cabbagetown / Regent Park",
+    color: "#06b6d4",
+    polygon: { type: "Polygon", coordinates: [[
+      [-79.363, 43.652], [-79.320, 43.652],
+      [-79.320, 43.690], [-79.363, 43.690], [-79.363, 43.652],
+    ]] },
+  },
+];
+
+// ── Work Districts (8) ──
+// Focused employment clusters; do NOT need to tile 100%.
+const WORK_ZONES: Array<{ name: string; color: string; polygon: GeoJSON.Polygon }> = [
   {
     name: "Financial District",
-    color: "#22c55e",
-    polygon: {
-      type: "Polygon",
-      coordinates: [
-        [
-          [-79.3875, 43.6465], // University & King
-          [-79.3780, 43.6465], // Yonge & King
-          [-79.3780, 43.6518], // Yonge & Queen
-          [-79.3875, 43.6518], // University & Queen
-          [-79.3875, 43.6465],
-        ],
-      ],
-    },
+    color: "#2563eb",
+    polygon: { type: "Polygon", coordinates: [[
+      [-79.387, 43.644], [-79.374, 43.644],
+      [-79.374, 43.653], [-79.387, 43.653], [-79.387, 43.644],
+    ]] },
   },
-  // South of Queen, west of University to Spadina
   {
     name: "Entertainment District",
-    color: "#3b82f6",
-    polygon: {
-      type: "Polygon",
-      coordinates: [
-        [
-          [-79.3965, 43.6425], // Spadina & King
-          [-79.3875, 43.6425], // University & King
-          [-79.3875, 43.6490], // University & Queen
-          [-79.3965, 43.6490], // Spadina & Queen
-          [-79.3965, 43.6425],
-        ],
-      ],
-    },
+    color: "#7c3aed",
+    polygon: { type: "Polygon", coordinates: [[
+      [-79.400, 43.642], [-79.386, 43.642],
+      [-79.386, 43.651], [-79.400, 43.651], [-79.400, 43.642],
+    ]] },
   },
-  // Waterfront from Spadina to Jarvis
   {
-    name: "Harbourfront",
-    color: "#0ea5e9",
-    polygon: {
-      type: "Polygon",
-      coordinates: [
-        [
-          [-79.3965, 43.6345], // Spadina & Queens Quay
-          [-79.3720, 43.6345], // Jarvis-ish & Queens Quay
-          [-79.3720, 43.6405],
-          [-79.3965, 43.6405],
-          [-79.3965, 43.6345],
-        ],
-      ],
-    },
+    name: "Tech Corridor",
+    color: "#0891b2",
+    polygon: { type: "Polygon", coordinates: [[
+      [-79.420, 43.636], [-79.405, 43.636],
+      [-79.405, 43.645], [-79.420, 43.645], [-79.420, 43.636],
+    ]] },
   },
-  // East of Yonge, south of King towards Distillery / St. Lawrence
   {
-    name: "St. Lawrence / Distillery",
-    color: "#f59e0b",
-    polygon: {
-      type: "Polygon",
-      coordinates: [
-        [
-          [-79.3735, 43.6455], // Sherbourne & Front
-          [-79.3610, 43.6455], // Parliament
-          [-79.3610, 43.6535], // up to King/Front area
-          [-79.3735, 43.6535],
-          [-79.3735, 43.6455],
-        ],
-      ],
-    },
+    name: "UofT District",
+    color: "#1d4ed8",
+    polygon: { type: "Polygon", coordinates: [[
+      [-79.401, 43.658], [-79.388, 43.658],
+      [-79.388, 43.669], [-79.401, 43.669], [-79.401, 43.658],
+    ]] },
   },
-  // Church-Wellesley area north of Carlton, east of Yonge
   {
-    name: "Church-Wellesley",
-    color: "#a855f7",
-    polygon: {
-      type: "Polygon",
-      coordinates: [
-        [
-          [-79.3860, 43.6645], // Yonge & Wellesley
-          [-79.3725, 43.6645], // Jarvis-ish
-          [-79.3725, 43.6715], // north toward Bloor
-          [-79.3860, 43.6715],
-          [-79.3860, 43.6645],
-        ],
-      ],
-    },
+    name: "TMU District",
+    color: "#0369a1",
+    polygon: { type: "Polygon", coordinates: [[
+      [-79.385, 43.654], [-79.375, 43.654],
+      [-79.375, 43.664], [-79.385, 43.664], [-79.385, 43.654],
+    ]] },
+  },
+  {
+    name: "Government District",
+    color: "#b91c1c",
+    polygon: { type: "Polygon", coordinates: [[
+      [-79.396, 43.652], [-79.383, 43.652],
+      [-79.383, 43.666], [-79.396, 43.666], [-79.396, 43.652],
+    ]] },
+  },
+  {
+    name: "Hospital Row",
+    color: "#dc2626",
+    polygon: { type: "Polygon", coordinates: [[
+      [-79.393, 43.655], [-79.383, 43.655],
+      [-79.383, 43.668], [-79.393, 43.668], [-79.393, 43.655],
+    ]] },
+  },
+  {
+    name: "CNE / Exhibition Place",
+    color: "#ca8a04",
+    polygon: { type: "Polygon", coordinates: [[
+      [-79.420, 43.633], [-79.405, 43.633],
+      [-79.405, 43.639], [-79.420, 43.639], [-79.420, 43.633],
+    ]] },
   },
 ];
 
@@ -380,34 +429,126 @@ function setup3D(
   );
   const beforeId = labelLayer?.id;
 
-  // Region tints: GeoJSON fill so each area has a visible color (Mapbox "within" doesn't work for building polygons).
-  if (!map.getSource("toronto-regions")) {
-    const regionFeatures: GeoJSON.Feature<GeoJSON.Polygon>[] = REGIONS.map(
-      (r) => ({
-        type: "Feature",
-        properties: { color: r.color, name: r.name },
-        geometry: r.polygon,
+  // ── Residential Neighborhoods (soft tint) ──
+  if (!map.getSource("toronto-residential")) {
+    const residentialFeatures: GeoJSON.Feature<GeoJSON.Polygon>[] = RESIDENTIAL_ZONES.map(
+      (z) => ({
+        type: "Feature" as const,
+        properties: { color: z.color, name: z.name },
+        geometry: z.polygon,
       })
     );
-    map.addSource("toronto-regions", {
+    map.addSource("toronto-residential", {
       type: "geojson",
-      data: { type: "FeatureCollection", features: regionFeatures },
+      data: { type: "FeatureCollection", features: residentialFeatures },
     });
   }
   map.addLayer(
     {
-      id: "toronto-regions-fill",
+      id: "toronto-residential-fill",
       type: "fill",
-      source: "toronto-regions",
+      source: "toronto-residential",
       slot: "middle",
       paint: {
         "fill-color": ["get", "color"],
-        "fill-opacity": 0.7,
-        "fill-outline-color": "#020617",
+        "fill-opacity": 0.18,
       },
     },
     beforeId
   );
+  map.addLayer(
+    {
+      id: "toronto-residential-outline",
+      type: "line",
+      source: "toronto-residential",
+      slot: "middle",
+      paint: {
+        "line-color": ["get", "color"],
+        "line-width": 1.5,
+        "line-dasharray": [4, 3],
+        "line-opacity": 0.6,
+      },
+    },
+    beforeId
+  );
+  map.addLayer({
+    id: "toronto-residential-labels",
+    type: "symbol",
+    source: "toronto-residential",
+    layout: {
+      "text-field": ["get", "name"],
+      "text-size": 11,
+      "text-font": ["DIN Pro Medium", "Arial Unicode MS Regular"],
+      "text-anchor": "center",
+      "text-max-width": 8,
+    },
+    paint: {
+      "text-color": "#374151",
+      "text-halo-color": "rgba(255,255,255,0.85)",
+      "text-halo-width": 1.5,
+      "text-opacity": 0.8,
+    },
+  });
+
+  // ── Work Districts (bold overlay) ──
+  if (!map.getSource("toronto-work")) {
+    const workFeatures: GeoJSON.Feature<GeoJSON.Polygon>[] = WORK_ZONES.map(
+      (z) => ({
+        type: "Feature" as const,
+        properties: { color: z.color, name: z.name },
+        geometry: z.polygon,
+      })
+    );
+    map.addSource("toronto-work", {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: workFeatures },
+    });
+  }
+  map.addLayer(
+    {
+      id: "toronto-work-fill",
+      type: "fill",
+      source: "toronto-work",
+      slot: "middle",
+      paint: {
+        "fill-color": ["get", "color"],
+        "fill-opacity": 0.35,
+      },
+    },
+    beforeId
+  );
+  map.addLayer(
+    {
+      id: "toronto-work-outline",
+      type: "line",
+      source: "toronto-work",
+      slot: "middle",
+      paint: {
+        "line-color": ["get", "color"],
+        "line-width": 2,
+        "line-opacity": 0.8,
+      },
+    },
+    beforeId
+  );
+  map.addLayer({
+    id: "toronto-work-labels",
+    type: "symbol",
+    source: "toronto-work",
+    layout: {
+      "text-field": ["get", "name"],
+      "text-size": 12,
+      "text-font": ["DIN Pro Bold", "Arial Unicode MS Bold"],
+      "text-anchor": "center",
+      "text-max-width": 7,
+    },
+    paint: {
+      "text-color": "#1f2937",
+      "text-halo-color": "rgba(255,255,255,0.9)",
+      "text-halo-width": 1.8,
+      "text-opacity": 0.9,
+    },
+  });
 
   map.addLayer(
     {
