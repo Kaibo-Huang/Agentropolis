@@ -43,10 +43,13 @@ except ImportError:
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 # ---------------------------------------------------------------------------
-# Default virtual-time epoch for new sessions
+# Default virtual-time for new sessions (current UTC, rounded down to the hour)
 # ---------------------------------------------------------------------------
 
-_DEFAULT_VIRTUAL_TIME = datetime(2025, 1, 1, 8, 0, tzinfo=timezone.utc)
+
+def _default_virtual_time() -> datetime:
+    now = datetime.now(timezone.utc)
+    return now.replace(minute=0, second=0, microsecond=0)
 
 # ---------------------------------------------------------------------------
 # Pydantic models
@@ -152,7 +155,7 @@ async def create_session_endpoint(
 ) -> SessionResponse:
     """
     Create a new session with status 'paused' and virtual_time set to the
-    default simulation epoch (2025-01-01 08:00 UTC).
+    current UTC time (rounded down to the hour).
 
     If the simulation seeder module is available it will be invoked to
     populate archetypes, followers, and companies according to `config`.
@@ -161,9 +164,9 @@ async def create_session_endpoint(
     cfg: SessionConfig = body.config or SessionConfig()
     config_dict = cfg.model_dump()
 
-    # Persist the session row with the default virtual time
+    # Persist the session row with virtual_time = current time (hour boundary)
     session_obj = await create_session(
-        db, config=config_dict, virtual_time=_DEFAULT_VIRTUAL_TIME
+        db, config=config_dict, virtual_time=_default_virtual_time()
     )
 
     # Invoke seeder when available
