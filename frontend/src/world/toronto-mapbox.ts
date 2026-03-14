@@ -277,7 +277,21 @@ function buildFollowerGeoJSON(
   return { type: "FeatureCollection", features };
 }
 
-function setupFollowerLayer(map: mapboxgl.Map, followers: MapFollower[]): void {
+/** Interpolate skin tone 0–1 to hex (light → dark). */
+function skinToneToHex(t: number): string {
+  const light = [0xf5, 0xe6, 0xd3];
+  const dark = [0x2d, 0x1f, 0x14];
+  const r = Math.round(light[0] + (dark[0] - light[0]) * t);
+  const g = Math.round(light[1] + (dark[1] - light[1]) * t);
+  const b = Math.round(light[2] + (dark[2] - light[2]) * t);
+  return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+}
+
+/** Add Mapbox built-in circle layer for followers (avatar color from properties). */
+function setupFollowerLayer(
+  map: mapboxgl.Map,
+  followers: MapFollower[],
+): void {
   if (map.getSource("followers")) return;
   map.addSource("followers", {
     type: "geojson",
@@ -287,9 +301,12 @@ function setupFollowerLayer(map: mapboxgl.Map, followers: MapFollower[]): void {
     id: "followers-layer",
     type: "circle",
     source: "followers",
+    minzoom: 12,
     paint: {
       "circle-radius": [
-        "interpolate", ["linear"], ["zoom"],
+        "interpolate",
+        ["linear"],
+        ["zoom"],
         12, 2,
         15, 5,
         18, 8,
@@ -298,9 +315,11 @@ function setupFollowerLayer(map: mapboxgl.Map, followers: MapFollower[]): void {
       "circle-stroke-width": 1.5,
       "circle-stroke-color": "rgba(255,255,255,0.9)",
       "circle-opacity": [
-        "interpolate", ["linear"], ["get", "happiness"],
+        "interpolate",
+        ["linear"],
+        ["get", "happiness"],
         0, 0.4,
-        1, 1.0,
+        1, 1,
       ],
     },
   });
@@ -380,6 +399,8 @@ export class TorontoMapboxScene {
   private animationId: number = 0;
   private currentStyle: "light" | "dark" = "light";
   private readonly buildingColors: BuildingColorPalette;
+  private followers: MapFollower[] = [];
+  private container: HTMLElement;
   private userInteracting: boolean = false;
   private dragPos: { x: number; y: number } | null = null;
   private onMouseMove: ((e: MouseEvent) => void) | null = null;
@@ -389,6 +410,7 @@ export class TorontoMapboxScene {
 
   constructor(options: TorontoMapboxOptions) {
     const { container, buildingColors } = options;
+    this.container = container;
     this.buildingColors = buildingColors ?? DEFAULT_BUILDING_PALETTE;
     const env = (typeof import.meta !== "undefined" && (import.meta as { env?: Record<string, string> }).env) || {};
     const token = env.VITE_MAPBOX_ACCESS_TOKEN || "";
