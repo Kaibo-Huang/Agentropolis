@@ -42,6 +42,12 @@ export interface TorontoMapboxOptions {
 // Toronto downtown
 const TORONTO_CENTER: [number, number] = [-79.38175019453755, 43.64369424043282];
 
+function escapeHtml(s: string): string {
+  const div = document.createElement("div");
+  div.textContent = s;
+  return div.innerHTML;
+}
+
 /** Zoom step per click (default Mapbox is 1; smaller = less powerful). */
 const ZOOM_DELTA = 0.45;
 
@@ -581,8 +587,9 @@ export class TorontoMapboxScene {
   private animFromFollowers: MapFollower[] = [];
   private animToFollowers: MapFollower[] = [];
   private animStartTime: number = -1;
+  private popup: mapboxgl.Popup | null = null;
 
-  constructor(options: TorontoMapboxOptions) {
+constructor(options: TorontoMapboxOptions) {
     const { container, buildingColors } = options;
     this.container = container;
     this.buildingColors = buildingColors ?? DEFAULT_BUILDING_PALETTE;
@@ -702,6 +709,55 @@ export class TorontoMapboxScene {
       setup3D(this.map, this.buildingColors);
       setupFollowerLayer(this.map, this.lastFollowers);
     });
+
+    // Click on a follower circle: show popup with name, happiness, etc.
+    this.map.on("click", "followers-layer", (e) => {
+      if (!this.map || !e.features?.length) return;
+      e.preventDefault();
+      const feature = e.features[0];
+      const id = Number(feature.properties?.id);
+      const name = (feature.properties?.name as string) ?? "Unknown";
+      const happiness = typeof feature.properties?.happiness === "number"
+        ? feature.properties.happiness
+        : 0;
+      const follower = this.lastFollowers.find((f) => f.follower_id === id);
+      const happinessPct = Math.round(happiness * 100);
+      const happinessLabel =
+        happiness >= 0.7 ? "Happy" : happiness >= 0.4 ? "Okay" : "Unhappy";
+      const avatarLine =
+        follower?.avatar
+          ? `${follower.avatar.outfit} · ${follower.avatar.hairStyle}`
+          : "";
+      const html = `
+        <div class="follower-popup">
+          <strong class="follower-popup-name">${escapeHtml(name)}</strong>
+          <div class="follower-popup-row">
+            <span class="follower-popup-label">Happiness</span>
+            <span>${happinessLabel} (${happinessPct}%)</span>
+          </div>
+          ${avatarLine ? `<div class="follower-popup-row follower-popup-muted">${escapeHtml(avatarLine)}</div>` : ""}
+        </div>
+      `;
+      if (this.popup) this.popup.remove();
+      this.popup = new mapboxgl.Popup({
+        closeButton: true,
+        closeOnClick: false,
+        className: "follower-popup-container",
+      })
+        .setLngLat(e.lngLat)
+        .setHTML(html)
+        .addTo(this.map);
+      this.popup.on("close", () => {
+        this.popup = null;
+      });
+    });
+
+    this.map.on("mouseenter", "followers-layer", () => {
+      if (this.map) this.map.getCanvas().style.cursor = "pointer";
+    });
+    this.map.on("mouseleave", "followers-layer", () => {
+      if (this.map) this.map.getCanvas().style.cursor = "";
+    });
   }
 
   updateState(hourOfDay: number): void {
@@ -769,6 +825,10 @@ export class TorontoMapboxScene {
 
   dispose(): void {
     cancelAnimationFrame(this.animationId);
+    if (this.popup) {
+      this.popup.remove();
+      this.popup = null;
+    }
     if (this.onMouseMove) window.removeEventListener("mousemove", this.onMouseMove);
     if (this.onMouseUp) window.removeEventListener("mouseup", this.onMouseUp);
     if (this.onWheel && this.map) {
