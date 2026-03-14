@@ -1,5 +1,5 @@
 /**
- * Web app entry: runs the city simulation and renders state + events.
+ * Web app entry: 3D Toronto + city simulation. Three.js scene driven by engine state.
  */
 import type { CityState } from "./types/city-state.js";
 import {
@@ -7,13 +7,12 @@ import {
   DEFAULT_CITY_STATE,
   SAMPLE_EVENTS,
 } from "./index.js";
+import { TorontoScene } from "./world/toronto-scene.js";
 
-const app = document.getElementById("app")!;
 const logEntries: string[] = [];
 const maxLogEntries = 50;
 
 function log(msg: string, isEvent = false) {
-  const cls = isEvent ? "event" : "";
   const entry = `${new Date().toLocaleTimeString()} ${msg}`;
   logEntries.unshift(entry);
   if (logEntries.length > maxLogEntries) logEntries.pop();
@@ -75,56 +74,12 @@ function renderMetrics(state: Readonly<CityState>) {
     )
     .join("");
 
-  const dayBar = `
-    <div class="day-bar">
-      <span class="day">Day ${engine.day}</span>
-      <span class="population">Population ${formatMetric(state.population, true)}</span>
-    </div>
-  `;
+  const metricsEl = document.getElementById("metrics");
+  if (metricsEl) metricsEl.innerHTML = metricsHtml;
 
-  const controls = `
-    <div class="controls">
-      <button type="button" class="primary" id="btn-step">Advance 1 day</button>
-      <button type="button" id="btn-run-30">Run 30 days</button>
-    </div>
-  `;
-
-  const eventsSection = `
-    <section class="events-section">
-      <h2>Apply event</h2>
-      <div class="events-grid" id="events-grid"></div>
-    </section>
-  `;
-
-  const logSection = `
-    <div class="log" id="log"></div>
-  `;
-
-  app.innerHTML = `
-    <h1>GenAI Genesis</h1>
-    <p class="subtitle">City state simulation — advance days and apply events.</p>
-    ${dayBar}
-    ${controls}
-    <div class="metrics">${metricsHtml}</div>
-    ${eventsSection}
-    ${logSection}
-  `;
-
-  document.getElementById("btn-step")!.addEventListener("click", onStep);
-  document.getElementById("btn-run-30")!.addEventListener("click", onRun30);
-
-  const grid = document.getElementById("events-grid")!;
-  for (const [id, ev] of Object.entries(SAMPLE_EVENTS)) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "event-btn";
-    btn.dataset.eventId = id;
-    btn.innerHTML = `<span class="name">${escapeHtml(ev.name)}</span><span class="desc">${escapeHtml(ev.description ?? "")}</span>`;
-    btn.addEventListener("click", () => applyEvent(id));
-    grid.appendChild(btn);
-  }
-
-  renderLog();
+  const dayPopEl = document.getElementById("day-pop");
+  if (dayPopEl)
+    dayPopEl.textContent = `Day ${engine.day} · Pop. ${formatMetric(state.population, true)}`;
 }
 
 function onStep() {
@@ -150,14 +105,34 @@ function applyEvent(eventId: string) {
 const engine = new SimulationEngine(
   { ...DEFAULT_CITY_STATE },
   {
-    onStep(prev, next, day) {
-      // optional: fine-grained log per step
-    },
-    onEventApplied(result, day) {
-      // already logged in applyEvent()
-    },
+    onStep(_prev, _next, _day) {},
+    onEventApplied(_result, _day) {},
   }
 );
 
-log("Simulation started.");
+const canvasContainer = document.getElementById("canvas-container")!;
+const canvas = document.createElement("canvas");
+canvas.id = "toronto-canvas";
+canvasContainer.appendChild(canvas);
+
+const torontoScene = new TorontoScene({ canvas });
+torontoScene.startRenderLoop(() => ({
+  state: engine.state,
+  day: engine.day,
+}));
+
+document.getElementById("btn-step")!.addEventListener("click", onStep);
+document.getElementById("btn-run-30")!.addEventListener("click", onRun30);
+
+const grid = document.getElementById("events-grid")!;
+for (const [id, ev] of Object.entries(SAMPLE_EVENTS)) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "event-btn";
+  btn.innerHTML = `<span class="name">${escapeHtml(ev.name)}</span><span class="desc">${escapeHtml(ev.description ?? "")}</span>`;
+  btn.addEventListener("click", () => applyEvent(id));
+  grid.appendChild(btn);
+}
+
+log("Simulation started — Toronto 3D.");
 renderMetrics(engine.state);

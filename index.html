@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>GenAI Genesis — City Simulation</title>
+    <title>GenAI Genesis — Toronto Simulation</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -12,68 +12,82 @@
     />
     <style>
       :root {
-        --bg: #0d0f14;
-        --surface: #161a22;
+        --bg: rgba(13, 15, 20, 0.88);
+        --surface: rgba(22, 26, 34, 0.95);
         --border: #2a3140;
         --muted: #6b7280;
         --text: #e6e9ef;
         --accent: #7dd3c0;
         --accent-dim: #5aa896;
-        --danger: #e07d7d;
-        --warn: #e0c07d;
         --radius: 8px;
       }
-      * {
-        box-sizing: border-box;
-      }
-      body {
+      * { box-sizing: border-box; }
+      html, body {
         margin: 0;
-        min-height: 100vh;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
         font-family: "Outfit", system-ui, sans-serif;
-        background: var(--bg);
         color: var(--text);
         line-height: 1.5;
       }
-      #app {
-        max-width: 900px;
-        margin: 0 auto;
-        padding: 2rem 1.5rem;
+      #canvas-container {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
       }
-      h1 {
-        font-size: 1.5rem;
-        font-weight: 700;
-        letter-spacing: -0.02em;
-        margin: 0 0 0.25rem 0;
+      #canvas-container canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
       }
-      .subtitle {
-        color: var(--muted);
-        font-size: 0.9rem;
-        margin-bottom: 2rem;
+      #ui-overlay {
+        position: fixed;
+        z-index: 10;
+        pointer-events: none;
       }
-      .day-bar {
+      #ui-overlay > * { pointer-events: auto; }
+      #ui-panel {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        max-height: 42vh;
+        overflow-y: auto;
+        padding: 1rem 1.5rem 1.5rem;
+        background: linear-gradient(to top, var(--surface), transparent);
+        border-top: 1px solid var(--border);
+      }
+      .title-bar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        padding: 0.75rem 1.5rem;
+        background: linear-gradient(to bottom, var(--bg), transparent);
         display: flex;
         align-items: center;
-        gap: 1rem;
-        margin-bottom: 1.5rem;
-        padding: 0.75rem 1rem;
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+      }
+      .title-bar h1 {
+        font-size: 1.15rem;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        margin: 0;
+      }
+      .title-bar .day-pop {
         font-family: "JetBrains Mono", monospace;
-      }
-      .day-bar .day {
-        font-weight: 600;
-        color: var(--accent);
-      }
-      .day-bar .population {
-        color: var(--muted);
         font-size: 0.85rem;
+        color: var(--accent);
       }
       .controls {
         display: flex;
         flex-wrap: wrap;
         gap: 0.5rem;
-        margin-bottom: 1.5rem;
+        margin-bottom: 0.75rem;
       }
       button {
         font-family: inherit;
@@ -93,7 +107,7 @@
       }
       button.primary {
         background: var(--accent);
-        color: var(--bg);
+        color: #0d0f14;
         border-color: var(--accent);
       }
       button.primary:hover {
@@ -102,33 +116,33 @@
       }
       .metrics {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-        gap: 0.75rem;
-        margin-bottom: 2rem;
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: 0.5rem;
+        margin-bottom: 0.75rem;
       }
       .metric {
-        background: var(--surface);
+        background: var(--bg);
         border: 1px solid var(--border);
         border-radius: var(--radius);
-        padding: 0.875rem 1rem;
+        padding: 0.5rem 0.75rem;
       }
       .metric .label {
-        font-size: 0.75rem;
+        font-size: 0.65rem;
         text-transform: uppercase;
         letter-spacing: 0.04em;
         color: var(--muted);
-        margin-bottom: 0.25rem;
+        margin-bottom: 0.15rem;
       }
       .metric .value {
         font-family: "JetBrains Mono", monospace;
         font-weight: 600;
-        font-size: 1.1rem;
+        font-size: 1rem;
       }
       .metric .bar-wrap {
-        height: 4px;
+        height: 3px;
         background: var(--border);
         border-radius: 2px;
-        margin-top: 0.5rem;
+        margin-top: 0.35rem;
         overflow: hidden;
       }
       .metric .bar {
@@ -142,44 +156,62 @@
       .metric.pollution .bar { background: #e0c07d; }
       .metric.publicOpinion .bar { background: #c07de0; }
       .events-section h2 {
-        font-size: 0.9rem;
+        font-size: 0.75rem;
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.04em;
         color: var(--muted);
-        margin: 0 0 0.75rem 0;
+        margin: 0 0 0.5rem 0;
       }
       .events-grid {
         display: flex;
         flex-wrap: wrap;
-        gap: 0.5rem;
+        gap: 0.4rem;
       }
       .event-btn {
-        font-size: 0.8rem;
-        padding: 0.4rem 0.65rem;
+        font-size: 0.75rem;
+        padding: 0.35rem 0.5rem;
         text-align: left;
-        max-width: 160px;
+        max-width: 140px;
       }
       .event-btn .name { display: block; font-weight: 600; }
-      .event-btn .desc { display: block; font-size: 0.7rem; color: var(--muted); margin-top: 0.15rem; }
+      .event-btn .desc { display: block; font-size: 0.65rem; color: var(--muted); margin-top: 0.1rem; }
       .log {
-        margin-top: 2rem;
-        padding: 1rem;
-        background: var(--surface);
+        margin-top: 0.75rem;
+        padding: 0.5rem 0.75rem;
+        background: var(--bg);
         border: 1px solid var(--border);
         border-radius: var(--radius);
         font-family: "JetBrains Mono", monospace;
-        font-size: 0.8rem;
+        font-size: 0.7rem;
         color: var(--muted);
-        max-height: 200px;
+        max-height: 100px;
         overflow-y: auto;
       }
-      .log-entry { margin: 0.25rem 0; }
+      .log-entry { margin: 0.15rem 0; }
       .log-entry.event { color: var(--accent); }
     </style>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="canvas-container"></div>
+    <div id="ui-overlay">
+      <header class="title-bar">
+        <h1>GenAI Genesis — Toronto</h1>
+        <span class="day-pop" id="day-pop">Day 0 · Pop. 100,000</span>
+      </header>
+      <div id="ui-panel">
+        <div class="controls">
+          <button type="button" class="primary" id="btn-step">Advance 1 day</button>
+          <button type="button" id="btn-run-30">Run 30 days</button>
+        </div>
+        <div class="metrics" id="metrics"></div>
+        <section class="events-section">
+          <h2>Apply event</h2>
+          <div class="events-grid" id="events-grid"></div>
+        </section>
+        <div class="log" id="log"></div>
+      </div>
+    </div>
     <script type="module" src="/src/web.ts"></script>
   </body>
 </html>
