@@ -1,0 +1,542 @@
+/**
+ * Mapbox GL JS 3D map centered on Toronto: terrain + 3D building extrusions.
+ * Same integration as TorontoScene: container, startRenderLoop(getState), updateState(state, day), dispose.
+ * Set VITE_MAPBOX_ACCESS_TOKEN in .env for the map to load.
+ */
+import mapboxgl from "mapbox-gl";
+import "mapbox-gl/dist/mapbox-gl.css";
+import type { CityState } from "../types/city-state.js";
+
+/** Hex colors for building height gradient (low → high). Default: warm to cool. */
+export type BuildingColorPalette = readonly [string, string, ...string[]];
+
+export interface TorontoMapboxOptions {
+  container: HTMLElement;
+  onResize?: () => void;
+  /** Colors for 3D buildings by height (low to high). 2–5 hex colors recommended. */
+  buildingColors?: BuildingColorPalette;
+}
+
+// Toronto downtown
+const TORONTO_CENTER: [number, number] = [-79.38175019453755, 43.64369424043282];
+
+/** Zoom step per click (default Mapbox is 1; smaller = less powerful). */
+const ZOOM_DELTA = 0.45;
+
+/** Custom zoom control: same look as NavigationControl but smaller step and position. */
+class GentleZoomControl {
+  private map?: mapboxgl.Map;
+  private container?: HTMLElement;
+
+  onAdd(map: mapboxgl.Map): HTMLElement {
+    this.map = map;
+    const container = document.createElement("div");
+    container.className = "mapboxgl-ctrl mapboxgl-ctrl-group";
+    container.style.marginBottom = "24px";
+
+    const zoomIn = document.createElement("button");
+    zoomIn.className = "mapboxgl-ctrl-icon mapboxgl-ctrl-zoom-in";
+    zoomIn.type = "button";
+    zoomIn.setAttribute("aria-label", "Zoom in");
+    zoomIn.innerHTML = "+";
+    zoomIn.style.fontSize = "18px";
+    zoomIn.style.fontWeight = "600";
+    zoomIn.style.lineHeight = "1";
+    zoomIn.style.backgroundImage = "none";
+    zoomIn.addEventListener("click", () => this.zoom(1));
+
+    const zoomOut = document.createElement("button");
+    zoomOut.className = "mapboxgl-ctrl-icon mapboxgl-ctrl-zoom-out";
+    zoomOut.type = "button";
+    zoomOut.setAttribute("aria-label", "Zoom out");
+    zoomOut.innerHTML = "−";
+    zoomOut.style.fontSize = "18px";
+    zoomOut.style.fontWeight = "600";
+    zoomOut.style.lineHeight = "1";
+    zoomOut.style.backgroundImage = "none";
+    zoomOut.addEventListener("click", () => this.zoom(-1));
+
+    container.append(zoomIn, zoomOut);
+    this.container = container;
+    return container;
+  }
+
+  private zoom(direction: 1 | -1): void {
+    if (!this.map) return;
+    const current = this.map.getZoom();
+    const next = Math.min(22, Math.max(0, current + direction * ZOOM_DELTA));
+    this.map.easeTo({ zoom: next, duration: 320 });
+  }
+
+  onRemove(): void {
+    this.container?.remove();
+    this.container = undefined;
+    this.map = undefined;
+  }
+}
+
+// Pedestrian paths: [lng, lat][] along streets (downtown Toronto). Each path loops.
+const PEDESTRIAN_PATHS: [number, number][][] = [
+  [
+    [-79.387, 43.651],
+    [-79.382, 43.651],
+    [-79.378, 43.6515],
+    [-79.375, 43.652],
+    [-79.375, 43.654],
+    [-79.378, 43.6535],
+    [-79.382, 43.653],
+    [-79.387, 43.6525],
+    [-79.387, 43.651],
+  ],
+  [
+    [-79.383, 43.649],
+    [-79.383, 43.653],
+    [-79.383, 43.657],
+    [-79.381, 43.657],
+    [-79.381, 43.653],
+    [-79.381, 43.649],
+    [-79.383, 43.649],
+  ],
+  [
+    [-79.378, 43.654],
+    [-79.382, 43.654],
+    [-79.385, 43.654],
+    [-79.385, 43.652],
+    [-79.382, 43.652],
+    [-79.378, 43.652],
+    [-79.378, 43.654],
+  ],
+  [
+    [-79.386, 43.655],
+    [-79.384, 43.655],
+    [-79.382, 43.655],
+    [-79.382, 43.656],
+    [-79.384, 43.656],
+    [-79.386, 43.656],
+    [-79.386, 43.655],
+  ],
+  [
+    [-79.379, 43.650],
+    [-79.377, 43.651],
+    [-79.376, 43.653],
+    [-79.377, 43.655],
+    [-79.379, 43.655],
+    [-79.380, 43.653],
+    [-79.379, 43.650],
+  ],
+];
+
+interface Pedestrian {
+  pathIndex: number;
+  t: number;
+  speed: number;
+}
+
+function lerpPath(path: [number, number][], t: number): [number, number] {
+  const n = path.length - 1;
+  if (n <= 0) return path[0] ?? [0, 0];
+  const normalizedT = ((t % 1) + 1) % 1;
+  const scaled = normalizedT * n;
+  const i = Math.min(Math.floor(scaled), n - 1);
+  const a = scaled - i;
+  const p0 = path[i]!;
+  const p1 = path[i + 1]!;
+  return [
+    p0[0] + (p1[0] - p0[0]) * a,
+    p0[1] + (p1[1] - p0[1]) * a,
+  ];
+}
+
+// Default: warm (low) → cool (tall) gradient
+const DEFAULT_BUILDING_PALETTE: BuildingColorPalette = [
+  "#819382", // light teal
+  "#93A294", // green
+  "#A5B2A6", // blue
+  "#B7C1B8", // blue-gray
+  "#DBE0DC", // mauve
+];
+
+// Downtown Toronto neighborhood polygons (GeoJSON: [lng, lat], closed ring).
+// These are rough, but aligned more closely with real districts.
+const REGIONS: Array<{ name: string; color: string; polygon: GeoJSON.Polygon }> = [
+  // Roughly King St W / Queen St W between University and Yonge
+  {
+    name: "Financial District",
+    color: "#22c55e",
+    polygon: {
+      type: "Polygon",
+      coordinates: [
+        [
+          [-79.3875, 43.6465], // University & King
+          [-79.3780, 43.6465], // Yonge & King
+          [-79.3780, 43.6518], // Yonge & Queen
+          [-79.3875, 43.6518], // University & Queen
+          [-79.3875, 43.6465],
+        ],
+      ],
+    },
+  },
+  // South of Queen, west of University to Spadina
+  {
+    name: "Entertainment District",
+    color: "#3b82f6",
+    polygon: {
+      type: "Polygon",
+      coordinates: [
+        [
+          [-79.3965, 43.6425], // Spadina & King
+          [-79.3875, 43.6425], // University & King
+          [-79.3875, 43.6490], // University & Queen
+          [-79.3965, 43.6490], // Spadina & Queen
+          [-79.3965, 43.6425],
+        ],
+      ],
+    },
+  },
+  // Waterfront from Spadina to Jarvis
+  {
+    name: "Harbourfront",
+    color: "#0ea5e9",
+    polygon: {
+      type: "Polygon",
+      coordinates: [
+        [
+          [-79.3965, 43.6345], // Spadina & Queens Quay
+          [-79.3720, 43.6345], // Jarvis-ish & Queens Quay
+          [-79.3720, 43.6405],
+          [-79.3965, 43.6405],
+          [-79.3965, 43.6345],
+        ],
+      ],
+    },
+  },
+  // East of Yonge, south of King towards Distillery / St. Lawrence
+  {
+    name: "St. Lawrence / Distillery",
+    color: "#f59e0b",
+    polygon: {
+      type: "Polygon",
+      coordinates: [
+        [
+          [-79.3735, 43.6455], // Sherbourne & Front
+          [-79.3610, 43.6455], // Parliament
+          [-79.3610, 43.6535], // up to King/Front area
+          [-79.3735, 43.6535],
+          [-79.3735, 43.6455],
+        ],
+      ],
+    },
+  },
+  // Church-Wellesley area north of Carlton, east of Yonge
+  {
+    name: "Church-Wellesley",
+    color: "#a855f7",
+    polygon: {
+      type: "Polygon",
+      coordinates: [
+        [
+          [-79.3860, 43.6645], // Yonge & Wellesley
+          [-79.3725, 43.6645], // Jarvis-ish
+          [-79.3725, 43.6715], // north toward Bloor
+          [-79.3860, 43.6715],
+          [-79.3860, 43.6645],
+        ],
+      ],
+    },
+  },
+];
+
+/** Height-based color gradient (for default layer when not in a region). */
+function buildingColorExpression(
+  palette: BuildingColorPalette
+): mapboxgl.Expression {
+  const stops: (number | string)[] = [];
+  const n = palette.length;
+  const heightStops = [0, 25, 75, 150, 300];
+  for (let i = 0; i < n; i++) {
+    const h = heightStops[Math.min(i, heightStops.length - 1)];
+    stops.push(h, palette[i]);
+  }
+  return ["interpolate", ["linear"], ["get", "height"], ...stops] as mapboxgl.Expression;
+}
+
+/** Common height/base paint; pass a color string or expression. */
+function buildingExtrusionPaint(
+  color: string | mapboxgl.Expression
+): Record<string, unknown> {
+  return {
+    "fill-extrusion-color": color,
+    "fill-extrusion-height": [
+      "interpolate",
+      ["linear"],
+      ["zoom"],
+      14,
+      0,
+      14.05,
+      ["get", "height"],
+    ],
+    "fill-extrusion-base": [
+      "interpolate",
+      ["linear"],
+      ["zoom"],
+      14,
+      0,
+      14.05,
+      ["get", "min_height"],
+    ],
+    "fill-extrusion-opacity": 0.9,
+  };
+}
+
+const PEDESTRIAN_COLORS = [
+  "#7dd3c0",
+  "#2563eb",
+  "#dc2626",
+  "#16a34a",
+  "#ca8a04",
+  "#7c3aed",
+  "#0891b2",
+  "#4b5563",
+];
+
+function getPedestrianGeoJSON(
+  pedestrians: Pedestrian[]
+): GeoJSON.FeatureCollection<GeoJSON.Point> {
+  const features: GeoJSON.Feature<GeoJSON.Point>[] = pedestrians.map(
+    (p, i) => {
+      const path = PEDESTRIAN_PATHS[p.pathIndex % PEDESTRIAN_PATHS.length]!;
+      const [lng, lat] = lerpPath(path, p.t);
+      return {
+        type: "Feature",
+        properties: {
+          color: PEDESTRIAN_COLORS[i % PEDESTRIAN_COLORS.length],
+        },
+        geometry: {
+          type: "Point",
+          coordinates: [lng, lat],
+        },
+      };
+    }
+  );
+  return { type: "FeatureCollection", features };
+}
+
+function setupPedestrians(
+  map: mapboxgl.Map,
+  pedestrians: Pedestrian[]
+): void {
+  if (map.getSource("pedestrians")) return;
+  map.addSource("pedestrians", {
+    type: "geojson",
+    data: getPedestrianGeoJSON(pedestrians),
+  });
+  map.addLayer({
+    id: "pedestrians-layer",
+    type: "circle",
+    source: "pedestrians",
+    paint: {
+      "circle-radius": 5,
+      "circle-color": ["get", "color"],
+      "circle-stroke-width": 1.5,
+      "circle-stroke-color": "rgba(255,255,255,0.9)",
+    },
+  });
+}
+
+function setup3D(
+  map: mapboxgl.Map,
+  buildingColors: BuildingColorPalette = DEFAULT_BUILDING_PALETTE
+): void {
+  // 3D terrain
+  if (!map.getSource("mapbox-dem")) {
+    map.addSource("mapbox-dem", {
+      type: "raster-dem",
+      url: "mapbox://mapbox.mapbox-terrain-dem-v1",
+      tileSize: 512,
+      maxzoom: 14,
+    });
+    map.setTerrain({ source: "mapbox-dem", exaggeration: 1.2 });
+  }
+
+  if (map.getLayer("add-3d-buildings")) return;
+
+  const layers = map.getStyle().layers;
+  const labelLayer = layers?.find(
+    (layer) =>
+      layer.type === "symbol" &&
+      "layout" in layer &&
+      layer.layout &&
+      typeof (layer.layout as Record<string, unknown>)["text-field"] !== "undefined"
+  );
+  const beforeId = labelLayer?.id;
+
+  // Region tints: GeoJSON fill so each area has a visible color (Mapbox "within" doesn't work for building polygons).
+  if (!map.getSource("toronto-regions")) {
+    const regionFeatures: GeoJSON.Feature<GeoJSON.Polygon>[] = REGIONS.map(
+      (r) => ({
+        type: "Feature",
+        properties: { color: r.color, name: r.name },
+        geometry: r.polygon,
+      })
+    );
+    map.addSource("toronto-regions", {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: regionFeatures },
+    });
+  }
+  map.addLayer(
+    {
+      id: "toronto-regions-fill",
+      type: "fill",
+      source: "toronto-regions",
+      paint: {
+        "fill-color": ["get", "color"],
+        "fill-opacity": 0.7,
+        "fill-outline-color": "#020617",
+      },
+    },
+    beforeId
+  );
+
+  map.addLayer(
+    {
+      id: "add-3d-buildings",
+      source: "composite",
+      "source-layer": "building",
+      filter: ["==", "extrude", "true"],
+      type: "fill-extrusion",
+      minzoom: 14,
+      paint: buildingExtrusionPaint(buildingColorExpression(buildingColors)),
+    },
+    beforeId
+  );
+}
+
+export class TorontoMapboxScene {
+  private map: mapboxgl.Map | null = null;
+  private animationId: number = 0;
+  private currentStyle: "light" | "dark" = "light";
+  private readonly buildingColors: BuildingColorPalette;
+
+  constructor(options: TorontoMapboxOptions) {
+    const { container, buildingColors } = options;
+    this.buildingColors = buildingColors ?? DEFAULT_BUILDING_PALETTE;
+    const env = (typeof import.meta !== "undefined" && (import.meta as { env?: Record<string, string> }).env) || {};
+    const token = env.VITE_MAPBOX_ACCESS_TOKEN || "";
+
+    if (!token) {
+      console.warn(
+        "VITE_MAPBOX_ACCESS_TOKEN not set. Add it to .env to load the Mapbox map."
+      );
+      container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#6b7280;font-family:system-ui;">
+        Set VITE_MAPBOX_ACCESS_TOKEN in .env to load the map.
+      </div>`;
+      return;
+    }
+
+    this.map = new mapboxgl.Map({
+      container,
+      accessToken: token,
+      // Mapbox Standard (vector) for a clean, modern base map.
+      style: "mapbox://styles/mapbox/standard",
+      center: TORONTO_CENTER,
+      zoom: 15.5,
+      pitch: 60,
+      bearing: -20,
+      antialias: true,
+    });
+
+    this.map.addControl(new GentleZoomControl(), "bottom-right");
+
+    this.map.on("style.load", () => {
+      if (this.map) {
+        setup3D(this.map, this.buildingColors);
+        setupPedestrians(this.map, this.pedestrians);
+      }
+    });
+  }
+
+  private readonly pedestrians: Pedestrian[] = (() => {
+    const list: Pedestrian[] = [];
+    const count = 48;
+    for (let i = 0; i < count; i++) {
+      list.push({
+        pathIndex: i % PEDESTRIAN_PATHS.length,
+        t: (i / count) * 0.95,
+        speed: 0.012 + (i % 7) * 0.003,
+      });
+    }
+    return list;
+  })();
+
+  updateState(_state: Readonly<CityState>, day: number): void {
+    if (!this.map) return;
+    const timeOfDay = (day % 24) / 24;
+    const isNight = timeOfDay < 0.25 || timeOfDay > 0.75;
+    const mode = isNight ? "dark" : "light";
+
+    // Soft camera motion over the day (slight pitch + bearing drift, Cities: Skylines‑style).
+    const basePitch = 60;
+    const pitchWobble = Math.cos(timeOfDay * Math.PI * 2) * 4;
+    this.map.setPitch(basePitch + pitchWobble);
+
+    const baseBearing = -20;
+    const bearingDrift = Math.sin(timeOfDay * Math.PI * 2) * 6;
+    this.map.setBearing(baseBearing + bearingDrift);
+
+    // Atmospheric fog for day/night mood.
+    if (this.currentStyle !== mode) {
+      this.currentStyle = mode;
+      if (isNight) {
+        this.map.setFog({
+          color: "#020617",
+          "horizon-blend": 0.35,
+          range: [0.6, 6.0],
+          "space-color": "#000010",
+          "star-intensity": 0.6,
+        } as any);
+      } else {
+        this.map.setFog({
+          color: "#e2e8f0",
+          "horizon-blend": 0.18,
+          range: [0.9, 8.0],
+          "space-color": "#0b1120",
+          "star-intensity": 0.0,
+        } as any);
+      }
+    }
+  }
+
+  private updatePedestrians(): void {
+    const step = 0.014;
+    for (const p of this.pedestrians) {
+      p.t += p.speed * step;
+    }
+    const source = this.map?.getSource("pedestrians");
+    if (source && "setData" in source) {
+      (source as mapboxgl.GeoJSONSource).setData(
+        getPedestrianGeoJSON(this.pedestrians)
+      );
+    }
+  }
+
+  startRenderLoop(
+    getState: () => { state: Readonly<CityState>; day: number }
+  ): void {
+    const tick = () => {
+      this.animationId = requestAnimationFrame(tick);
+      this.updatePedestrians();
+      const { state, day } = getState();
+      this.updateState(state, day);
+    };
+    tick();
+  }
+
+  dispose(): void {
+    cancelAnimationFrame(this.animationId);
+    if (this.map) {
+      this.map.remove();
+      this.map = null;
+    }
+  }
+}
