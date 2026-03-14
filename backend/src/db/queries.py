@@ -40,14 +40,18 @@ async def get_session(db: AsyncSession, session_id: uuid.UUID) -> Session | None
     return result.scalar_one_or_none()
 
 
+def _now_utc_hour() -> datetime:
+    from datetime import timezone
+    now = datetime.now(timezone.utc)
+    return now.replace(minute=0, second=0, microsecond=0)
+
+
 async def create_session(
     db: AsyncSession,
     config: dict | None = None,
     virtual_time: datetime | None = None,
 ) -> Session:
-    from datetime import timezone
-
-    vt = virtual_time or datetime(2025, 1, 1, 8, 0, tzinfo=timezone.utc)
+    vt = virtual_time or _now_utc_hour()
     session = Session(config=config, virtual_time=vt)
     db.add(session)
     await db.flush()
