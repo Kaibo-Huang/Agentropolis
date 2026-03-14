@@ -32,6 +32,22 @@ SOCIAL_CLASS_WEIGHTS_BY_REGION: dict[str, list[float]] = {
 DEFAULT_SOCIAL_CLASS_WEIGHTS: list[float] = [0.25, 0.50, 0.25]
 
 # ---------------------------------------------------------------------------
+# Social class weights by *residential neighborhood* (new zoning system)
+# Order matches SOCIAL_CLASSES: [lower, middle, upper]
+# ---------------------------------------------------------------------------
+
+SOCIAL_CLASS_WEIGHTS_BY_NEIGHBORHOOD: dict[str, list[float]] = {
+    "Liberty Village / Exhibition": [0.12, 0.58, 0.30],
+    "Queen West / Trinity-Bellwoods": [0.18, 0.52, 0.30],
+    "Entertainment / Harbourfront": [0.15, 0.50, 0.35],
+    "Chinatown / Kensington": [0.25, 0.55, 0.20],
+    "Financial / St. Lawrence": [0.08, 0.40, 0.52],
+    "Downtown Yonge / Church-Wellesley": [0.20, 0.50, 0.30],
+    "Corktown / Distillery": [0.22, 0.55, 0.23],
+    "Cabbagetown / Regent Park": [0.30, 0.52, 0.18],
+}
+
+# ---------------------------------------------------------------------------
 # Age distribution
 # ---------------------------------------------------------------------------
 

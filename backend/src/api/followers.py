@@ -31,6 +31,8 @@ class FollowerResponse(BaseModel):
     volatility: float
     avatar_seed: int | None = None
     avatar_params: dict | None = None
+    home_neighborhood: str | None = None
+    work_district: str | None = None
 
 
 class FollowerListResponse(BaseModel):

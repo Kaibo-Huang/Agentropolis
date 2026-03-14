@@ -34,16 +34,18 @@ def build_archetype_agent(archetype):
     -------
     A Railtracks agent node class ready for use with ``rt.call()``.
     """
+    home = getattr(archetype, "home_neighborhood", None) or archetype.region
+    work = getattr(archetype, "work_district", None) or archetype.region
     system_message = (
         f"You are simulating a demographic group in Toronto: "
         f"{archetype.industry} workers, {archetype.social_class or 'mixed'} class, "
-        f"living in {archetype.region}.\n\n"
+        f"living in {home}, working in {work}.\n\n"
         "Use your tools to gather context before making decisions:\n"
         "- Check current time and how much time you need to fill\n"
         "- Look at recent memories to maintain continuity\n"
         "- Check active events that might affect behavior\n"
         "- Review follower stats (happiness, health) to inform decisions\n"
-        "- Check nearby locations for realistic action destinations\n"
+        "- Check nearby locations (zone='work' for work, zone='home' for home)\n"
         "- Review relationships for social action decisions\n\n"
         "Then generate actions. Each action needs: action_type, action_params, "
         "duration (hours), thinking (1 sentence max).\n"
