@@ -86,7 +86,7 @@ class GentleZoomControl {
   private zoom(direction: 1 | -1): void {
     if (!this.map) return;
     const current = this.map.getZoom();
-    const next = Math.min(18, Math.max(12, current + direction * ZOOM_DELTA));
+    const next = Math.min(18, Math.max(13, current + direction * ZOOM_DELTA));
     this.map.easeTo({ zoom: next, duration: 320 });
   }
 
@@ -407,16 +407,16 @@ export class TorontoMapboxScene {
       style: "mapbox://styles/mapbox/standard",
       center: TORONTO_CENTER,
       zoom: 14,
-      minZoom: 12,
+      minZoom: 13,
       maxZoom: 18,
       pitch: 40,
       maxPitch: 60,
       bearing: -20,
       antialias: true,
-      // City of Toronto municipal boundaries
+      // Downtown Toronto core: Bathurst → DVP, waterfront → Bloor
       maxBounds: [
-        [-79.63, 43.58], // SW: Etobicoke / lakeshore
-        [-79.12, 43.86], // NE: Scarborough / Steeles Ave
+        [-79.42, 43.62], // SW: Bathurst & lakeshore
+        [-79.32, 43.69], // NE: DVP & Bloor
       ],
     });
 
@@ -464,7 +464,7 @@ export class TorontoMapboxScene {
     this.map.on("load", () => {
       if (!this.map) return;
       // Enforce zoom limits after load so scroll wheel also respects them
-      this.map.setMinZoom(12);
+      this.map.setMinZoom(13);
       this.map.setMaxZoom(18);
       this.map.scrollZoom.enable();
       setup3D(this.map, this.buildingColors);
@@ -484,17 +484,6 @@ export class TorontoMapboxScene {
     const timeOfDay = hourOfDay / 24;
     const isNight = timeOfDay < 0.25 || timeOfDay > 0.75;
     const mode = isNight ? "dark" : "light";
-
-    // Soft camera motion over the day — paused while the user is dragging/rotating.
-    if (!this.userInteracting) {
-      const basePitch = 40;
-      const pitchWobble = Math.cos(timeOfDay * Math.PI * 2) * 3;
-      this.map.setPitch(basePitch + pitchWobble);
-
-      const baseBearing = -20;
-      const bearingDrift = Math.sin(timeOfDay * Math.PI * 2) * 6;
-      this.map.setBearing(baseBearing + bearingDrift);
-    }
 
     // Atmospheric fog for day/night mood.
     if (this.currentStyle !== mode) {
