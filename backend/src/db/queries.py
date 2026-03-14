@@ -153,6 +153,20 @@ async def batch_insert_followers(
     await db.execute(insert(Follower), followers_data)
 
 
+async def create_follower(
+    db: AsyncSession, session_id: uuid.UUID, follower_data: dict
+) -> Follower:
+    """Insert a single follower; follower_id is assigned as next id for session."""
+    next_id = await get_max_id(db, Follower, session_id, "follower_id")
+    follower_data["session_id"] = session_id
+    follower_data["follower_id"] = next_id
+    row = Follower(**follower_data)
+    db.add(row)
+    await db.flush()
+    await db.refresh(row)
+    return row
+
+
 async def batch_update_followers(
     db: AsyncSession, updates: list[dict]
 ) -> None:

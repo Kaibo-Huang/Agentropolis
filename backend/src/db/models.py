@@ -151,6 +151,8 @@ class Follower(Base):
         Float, nullable=False, default=0.5, server_default="0.5"
     )
     volatility: Mapped[float] = mapped_column(Float, nullable=False)
+    avatar_seed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    avatar_params: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     session: Mapped["Session"] = relationship(back_populates="followers", lazy="noload")
     archetype: Mapped["Archetype"] = relationship(

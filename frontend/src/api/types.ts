@@ -43,6 +43,21 @@ export interface FollowerResponse {
   status_ailments: string[] | null;
   happiness: number;
   volatility: number;
+  /** Present after avatar migration; used to resolve avatar for rendering */
+  avatar_seed?: number | null;
+  avatar_params?: AvatarParamsResponse | null;
+}
+
+/** Avatar params as returned by API (snake_case) */
+export interface AvatarParamsResponse {
+  skin_tone: number;
+  body_type: string;
+  hair_texture: string;
+  hair_style: string;
+  hair_color: string;
+  outfit: string;
+  outfit_color: string;
+  accessories: string[];
 }
 
 export interface FollowerListResponse {

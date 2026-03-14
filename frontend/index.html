@@ -277,6 +277,65 @@
         display: block;
         margin-top: 0.1rem;
       }
+      /* Avatar creator sheet */
+      #avatar-sheet {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 20;
+        max-height: 50vh;
+        overflow-y: auto;
+        background: var(--card);
+        border-top: 1px solid var(--border);
+        padding: 1rem 1.25rem;
+        transform: translateY(100%);
+        transition: transform 0.25s ease;
+      }
+      #avatar-sheet.open {
+        transform: translateY(0);
+      }
+      #avatar-sheet h2 {
+        font-size: 0.7rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--muted-foreground);
+        margin: 0 0 0.25rem 0;
+      }
+      .avatar-desc {
+        font-size: 0.75rem;
+        color: var(--muted-foreground);
+        margin: 0 0 0.75rem 0;
+      }
+      .avatar-form label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-size: 0.75rem;
+      }
+      .avatar-form label input[type="text"],
+      .avatar-form label input[type="color"],
+      .avatar-form select {
+        margin-left: 0.5rem;
+      }
+      .avatar-form input[type="range"] {
+        vertical-align: middle;
+        width: 100px;
+      }
+      .avatar-accessories {
+        margin: 0.5rem 0;
+        font-size: 0.75rem;
+      }
+      .avatar-accessories legend { font-size: 0.7rem; }
+      .avatar-accessories label { margin-right: 0.75rem; display: inline-block; }
+      .avatar-preview {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        margin: 0.5rem 0;
+        border: 2px solid var(--border);
+      }
+      #btn-avatar-join { margin-top: 0.5rem; }
     </style>
   </head>
   <body>
@@ -295,6 +354,10 @@
           <button type="button" class="btn" id="btn-events">
             Events
             <span class="kbd">E</span>
+          </button>
+          <button type="button" class="btn" id="btn-avatar">
+            Create avatar
+            <span class="kbd">A</span>
           </button>
         </div>
       </div>
@@ -327,6 +390,29 @@
         </button>
       </div>
       <div class="log" id="log"></div>
+    </div>
+    <div id="avatar-sheet">
+      <h2>Create your avatar</h2>
+      <p class="avatar-desc">Join the simulation with a custom avatar. No photos — pick style and colors.</p>
+      <div class="avatar-form">
+        <label>Name <input type="text" id="avatar-name" value="You" maxlength="128" /></label>
+        <label>Skin tone <input type="range" id="avatar-skintone" min="0" max="100" value="40" /> <span id="avatar-skintone-val">0.4</span></label>
+        <label>Body <select id="avatar-body"><option value="slim">Slim</option><option value="average" selected>Average</option><option value="broad">Broad</option></select></label>
+        <label>Hair texture <select id="avatar-hair-texture"><option value="straight" selected>Straight</option><option value="wavy">Wavy</option><option value="curly">Curly</option><option value="coily">Coily</option></select></label>
+        <label>Hair style <select id="avatar-hair-style"><option value="short" selected>Short</option><option value="long">Long</option><option value="fade">Fade</option><option value="bun">Bun</option><option value="braids">Braids</option><option value="afro">Afro</option><option value="ponytail">Ponytail</option></select></label>
+        <label>Hair color <input type="color" id="avatar-hair-color" value="#4a3728" /></label>
+        <label>Outfit <select id="avatar-outfit"><option value="casual" selected>Casual</option><option value="professional">Professional</option><option value="student">Student</option><option value="athletic">Athletic</option><option value="construction">Construction</option><option value="service">Service</option></select></label>
+        <label>Outfit color <input type="color" id="avatar-outfit-color" value="#2c3e50" /></label>
+        <fieldset class="avatar-accessories">
+          <legend>Accessories</legend>
+          <label><input type="checkbox" id="acc-glasses" /> Glasses</label>
+          <label><input type="checkbox" id="acc-hat" /> Hat</label>
+          <label><input type="checkbox" id="acc-bag" /> Bag</label>
+          <label><input type="checkbox" id="acc-scarf" /> Scarf</label>
+        </fieldset>
+        <div class="avatar-preview" id="avatar-preview"></div>
+        <button type="button" class="btn btn-primary" id="btn-avatar-join">Join simulation</button>
+      </div>
     </div>
     <script type="module" src="/src/web.ts"></script>
   </body>
