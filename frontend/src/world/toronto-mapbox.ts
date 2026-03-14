@@ -86,7 +86,7 @@ class GentleZoomControl {
   private zoom(direction: 1 | -1): void {
     if (!this.map) return;
     const current = this.map.getZoom();
-    const next = Math.min(18, Math.max(11, current + direction * ZOOM_DELTA));
+    const next = Math.min(18, Math.max(12, current + direction * ZOOM_DELTA));
     this.map.easeTo({ zoom: next, duration: 320 });
   }
 
@@ -407,16 +407,16 @@ export class TorontoMapboxScene {
       style: "mapbox://styles/mapbox/standard",
       center: TORONTO_CENTER,
       zoom: 14,
-      minZoom: 11,
+      minZoom: 12,
       maxZoom: 18,
       pitch: 40,
       maxPitch: 60,
       bearing: -20,
       antialias: true,
-      // Bounds cover the Greater Toronto Area — center cannot leave this box
+      // City of Toronto municipal boundaries
       maxBounds: [
-        [-79.75, 43.50], // SW: Mississauga / Lake Ontario
-        [-78.90, 43.90], // NE: Pickering / Richmond Hill
+        [-79.63, 43.58], // SW: Etobicoke / lakeshore
+        [-79.12, 43.86], // NE: Scarborough / Steeles Ave
       ],
     });
 
@@ -450,14 +450,21 @@ export class TorontoMapboxScene {
     window.addEventListener("mousemove", this.onMouseMove);
     window.addEventListener("mouseup", this.onMouseUp);
 
-    // Pause day-cycle animation while the user is dragging/rotating
-    this.map.on("rotatestart", () => { this.userInteracting = true; });
-    this.map.on("rotateend", () => { this.userInteracting = false; });
+    // Pause day-cycle pitch/bearing animation during any user interaction
+    // (drag, rotate, zoom) so setPitch/setBearing don't interrupt easeTo animations.
+    const startInteract = () => { this.userInteracting = true; };
+    const endInteract = () => { this.userInteracting = false; };
+    this.map.on("dragstart", startInteract);
+    this.map.on("dragend", endInteract);
+    this.map.on("rotatestart", startInteract);
+    this.map.on("rotateend", endInteract);
+    this.map.on("zoomstart", startInteract);
+    this.map.on("zoomend", endInteract);
 
     this.map.on("load", () => {
       if (!this.map) return;
       // Enforce zoom limits after load so scroll wheel also respects them
-      this.map.setMinZoom(11);
+      this.map.setMinZoom(12);
       this.map.setMaxZoom(18);
       this.map.scrollZoom.enable();
       setup3D(this.map, this.buildingColors);
