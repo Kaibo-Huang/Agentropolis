@@ -38,48 +38,24 @@ function formatMetric(value: number, isPopulation = false): string {
   return Math.round(value).toString();
 }
 
+const STAT_PILLS: Array<{ key: keyof CityState; label: string }> = [
+  { key: "economy", label: "Economy" },
+  { key: "publicHealth", label: "Health" },
+  { key: "pollution", label: "Pollution" },
+];
+
 function renderMetrics(state: Readonly<CityState>) {
-  const metrics = [
-    { key: "economy", label: "Economy", value: state.economy, class: "economy" },
-    {
-      key: "publicHealth",
-      label: "Public health",
-      value: state.publicHealth,
-      class: "publicHealth",
-    },
-    {
-      key: "housingCost",
-      label: "Housing cost",
-      value: state.housingCost,
-      class: "housingCost",
-    },
-    { key: "pollution", label: "Pollution", value: state.pollution, class: "pollution" },
-    {
-      key: "publicOpinion",
-      label: "Public opinion",
-      value: state.publicOpinion,
-      class: "publicOpinion",
-    },
-  ];
-
-  const metricsHtml = metrics
-    .map(
-      (m) => `
-    <div class="metric ${m.class}">
-      <div class="label">${escapeHtml(m.label)}</div>
-      <div class="value">${formatMetric(m.value)}</div>
-      <div class="bar-wrap"><div class="bar" style="width:${m.value}%"></div></div>
-    </div>
-  `
-    )
-    .join("");
-
-  const metricsEl = document.getElementById("metrics");
-  if (metricsEl) metricsEl.innerHTML = metricsHtml;
-
-  const dayPopEl = document.getElementById("day-pop");
-  if (dayPopEl)
-    dayPopEl.textContent = `Day ${engine.day} · Pop. ${formatMetric(state.population, true)}`;
+  const statsEl = document.getElementById("stats");
+  if (statsEl) {
+    statsEl.innerHTML = STAT_PILLS.map(
+      (p) =>
+        `<span class="stat-pill"><span class="label">${escapeHtml(p.label)}</span><span class="value">${formatMetric(state[p.key])}</span></span>`
+    ).join("");
+  }
+  const dayEl = document.getElementById("day-display");
+  if (dayEl) dayEl.textContent = `Day ${engine.day}`;
+  const popEl = document.getElementById("pop-display");
+  if (popEl) popEl.textContent = `Pop. ${formatMetric(state.population, true)}`;
 }
 
 function onStep() {
@@ -120,6 +96,26 @@ torontoScene.startRenderLoop(() => ({
 
 document.getElementById("btn-step")!.addEventListener("click", onStep);
 document.getElementById("btn-run-30")!.addEventListener("click", onRun30);
+
+const eventsSheet = document.getElementById("events-sheet")!;
+function toggleEventsSheet() {
+  eventsSheet.classList.toggle("open");
+}
+document.getElementById("btn-events")!.addEventListener("click", toggleEventsSheet);
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === " " && !e.repeat) {
+    e.preventDefault();
+    onStep();
+  }
+  if (e.key === "e" || e.key === "E") {
+    const target = e.target as HTMLElement;
+    if (target.tagName !== "INPUT" && target.tagName !== "TEXTAREA") {
+      e.preventDefault();
+      toggleEventsSheet();
+    }
+  }
+});
 
 const grid = document.getElementById("events-grid")!;
 for (const [id, ev] of Object.entries(SAMPLE_EVENTS)) {
