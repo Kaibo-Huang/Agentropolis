@@ -1,12 +1,13 @@
 /**
- * Web app entry: 3D Toronto + city simulation. Three.js scene driven by engine state.
+ * Web app entry: 3D Toronto + city simulation frontend.
+ * Uses the genai-genesis engine package and Three.js scene.
  */
-import type { CityState } from "./types/city-state.js";
+import type { CityState } from "genai-genesis";
 import {
   SimulationEngine,
   DEFAULT_CITY_STATE,
   SAMPLE_EVENTS,
-} from "./index.js";
+} from "genai-genesis";
 import { TorontoScene } from "./world/toronto-scene.js";
 
 const logEntries: string[] = [];
@@ -136,3 +137,4 @@ for (const [id, ev] of Object.entries(SAMPLE_EVENTS)) {
 
 log("Simulation started — Toronto 3D.");
 renderMetrics(engine.state);
+
