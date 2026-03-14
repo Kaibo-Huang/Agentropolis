@@ -77,6 +77,21 @@ for (const c of engine.citizens.values()) {
 - **Custom rules**: Replace or wrap `computeDailyUpdate` in `engine/rules.ts` for different dynamics.
 - **Citizens**: Use `decideAction`, `evaluateCityStateForCitizen`, and `SocialNetwork.spreadOpinions` to plug in custom decision logic or different graph models.
 
+## Toronto map (full-stack)
+
+The repo includes a **backend** (FastAPI, NeonDB) and **frontend** (Mapbox GL, Toronto) for a live simulation with AI archetypes and followers on a 3D map.
+
+- **Backend**: `cd backend && uv run uvicorn src.main:app --reload` (set `DATABASE_URL` in `.env`).
+- **Frontend**: `cd frontend && npm install && npm run dev` (set `VITE_MAPBOX_ACCESS_TOKEN` and `VITE_API_URL` in `frontend/.env`).
+- **Database**: Run migrations with `cd backend && uv run alembic upgrade head`.
+
+### Procedural avatar system
+
+Agents are represented with **procedural avatars** (no photos): each follower has an `avatar_seed` or custom `avatar_params` (skin tone, hair, outfit, accessories). The map draws each agent as a circle colored by their **outfit color** when avatar data is present.
+
+- **Design**: See [docs/PROCEDURAL_AVATAR_SYSTEM.md](docs/PROCEDURAL_AVATAR_SYSTEM.md) for the full spec (generation algorithm, modular assets, rendering pipeline, performance).
+- **Create your avatar**: In the app, click **Create avatar** (or press **A**), set name, skin tone, hair, outfit, and accessories, then **Join simulation**. Your custom avatar is added as a new follower and appears on the map.
+
 ## License
 
 MIT
