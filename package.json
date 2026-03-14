@@ -25,6 +25,7 @@
     "vite": "^6.0.0"
   },
   "dependencies": {
+    "mapbox-gl": "^3.7.0",
     "three": "^0.183.2"
   }
 }
