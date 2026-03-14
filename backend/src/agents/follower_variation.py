@@ -47,7 +47,7 @@ def build_follower_variation_prompt(archetype, archetype_response, followers):
         agent needs to produce variations.
     """
     actions_json = json.dumps(
-        [a.model_dump() for a in archetype_response.actions], indent=2
+        [a.model_dump() for a in archetype_response.actions]
     )
     followers_json = json.dumps(
         [
@@ -57,11 +57,10 @@ def build_follower_variation_prompt(archetype, archetype_response, followers):
                 "volatility": f.volatility,
                 "happiness": f.happiness,
                 "position": f.position,
-                "ailments": f.status_ailments or [],
             }
+            | ({"ailments": f.status_ailments} if f.status_ailments else {})
             for f in followers
-        ],
-        indent=2,
+        ]
     )
 
     return (
