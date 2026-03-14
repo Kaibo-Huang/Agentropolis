@@ -162,6 +162,90 @@ document
   .getElementById("btn-events")!
   .addEventListener("click", toggleEventsSheet);
 
+const avatarSheet = document.getElementById("avatar-sheet")!;
+function toggleAvatarSheet() {
+  avatarSheet.classList.toggle("open");
+}
+document.getElementById("btn-avatar")!.addEventListener("click", toggleAvatarSheet);
+
+function getAvatarParamsFromForm(): {
+  name: string;
+  skinTone: number;
+  bodyType: string;
+  hairTexture: string;
+  hairStyle: string;
+  hairColor: string;
+  outfit: string;
+  outfitColor: string;
+  accessories: string[];
+} {
+  const nameEl = document.getElementById("avatar-name") as HTMLInputElement;
+  const skintoneEl = document.getElementById("avatar-skintone") as HTMLInputElement;
+  const bodyEl = document.getElementById("avatar-body") as HTMLSelectElement;
+  const hairTexEl = document.getElementById("avatar-hair-texture") as HTMLSelectElement;
+  const hairStyleEl = document.getElementById("avatar-hair-style") as HTMLSelectElement;
+  const hairColorEl = document.getElementById("avatar-hair-color") as HTMLInputElement;
+  const outfitEl = document.getElementById("avatar-outfit") as HTMLSelectElement;
+  const outfitColorEl = document.getElementById("avatar-outfit-color") as HTMLInputElement;
+  const acc = [
+    (document.getElementById("acc-glasses") as HTMLInputElement)?.checked && "glasses",
+    (document.getElementById("acc-hat") as HTMLInputElement)?.checked && "hat",
+    (document.getElementById("acc-bag") as HTMLInputElement)?.checked && "bag",
+    (document.getElementById("acc-scarf") as HTMLInputElement)?.checked && "scarf",
+  ].filter(Boolean) as string[];
+  return {
+    name: (nameEl?.value ?? "You").trim() || "You",
+    skinTone: Number(skintoneEl?.value ?? 40) / 100,
+    bodyType: bodyEl?.value ?? "average",
+    hairTexture: hairTexEl?.value ?? "straight",
+    hairStyle: hairStyleEl?.value ?? "short",
+    hairColor: hairColorEl?.value ?? "#4a3728",
+    outfit: outfitEl?.value ?? "casual",
+    outfitColor: outfitColorEl?.value ?? "#2c3e50",
+    accessories: acc,
+  };
+}
+
+function updateAvatarPreview() {
+  const p = getAvatarParamsFromForm();
+  const el = document.getElementById("avatar-preview");
+  if (el) el.style.backgroundColor = p.outfitColor;
+}
+["avatar-skintone", "avatar-body", "avatar-hair-texture", "avatar-hair-style", "avatar-hair-color", "avatar-outfit", "avatar-outfit-color"].forEach((id) => {
+  const el = document.getElementById(id);
+  el?.addEventListener("input", updateAvatarPreview);
+  el?.addEventListener("change", updateAvatarPreview);
+});
+document.getElementById("avatar-skintone")?.addEventListener("input", () => {
+  const v = (document.getElementById("avatar-skintone") as HTMLInputElement).value;
+  const valEl = document.getElementById("avatar-skintone-val");
+  if (valEl) valEl.textContent = (Number(v) / 100).toFixed(2);
+});
+
+document.getElementById("btn-avatar-join")?.addEventListener("click", async () => {
+  const session = controller.getSession();
+  if (!session) {
+    log("No session; start simulation first.");
+    return;
+  }
+  const p = getAvatarParamsFromForm();
+  try {
+    await controller.createFollowerWithAvatar(p.name, {
+      skinTone: p.skinTone,
+      bodyType: p.bodyType,
+      hairTexture: p.hairTexture,
+      hairStyle: p.hairStyle,
+      hairColor: p.hairColor,
+      outfit: p.outfit,
+      outfitColor: p.outfitColor,
+      accessories: p.accessories,
+    });
+    toggleAvatarSheet();
+  } catch (err) {
+    log(`Error: ${err instanceof Error ? err.message : String(err)}`);
+  }
+});
+
 document.getElementById("btn-event-submit")?.addEventListener("click", () => {
   const textarea = document.getElementById(
     "event-textarea",
@@ -190,9 +274,17 @@ document.addEventListener("keydown", (e) => {
       toggleEventsSheet();
     }
   }
+  if (e.key === "a" || e.key === "A") {
+    const target = e.target as HTMLElement;
+    if (target.tagName !== "INPUT" && target.tagName !== "TEXTAREA") {
+      e.preventDefault();
+      toggleAvatarSheet();
+    }
+  }
 });
 
 // ── Bootstrap ──
 
+updateAvatarPreview();
 log("Initializing Agentropolis...");
 controller.createAndConnect();
