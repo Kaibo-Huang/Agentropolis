@@ -23,6 +23,7 @@ Thumbs.db
 # IDE
 .idea/
 .vscode/
+.claude/
 *.swp
 *.swo
 *~
@@ -30,6 +31,8 @@ Thumbs.db
 # TypeScript
 *.tsbuildinfo
 
-*__pycache__
+__pycache__/
+**/__pycache__/
 *.pyc
-*.venv
+.venv/
+venv/
