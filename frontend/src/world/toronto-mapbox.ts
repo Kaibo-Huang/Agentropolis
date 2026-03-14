@@ -384,6 +384,8 @@ export class TorontoMapboxScene {
   private dragPos: { x: number; y: number } | null = null;
   private onMouseMove: ((e: MouseEvent) => void) | null = null;
   private onMouseUp: (() => void) | null = null;
+  private onWheel: ((e: WheelEvent) => void) | null = null;
+  private lastFollowers: MapFollower[] = [];
 
   constructor(options: TorontoMapboxOptions) {
     const { container, buildingColors } = options;
@@ -461,21 +463,35 @@ export class TorontoMapboxScene {
     this.map.on("zoomstart", startInteract);
     this.map.on("zoomend", endInteract);
 
+    // Disable Mapbox's built-in scroll zoom — it drifts north on pitched maps
+    // because it zooms toward the raycasted ground point under the cursor.
+    // Replace with a center-based zoom that uses easeTo so it never drifts.
+    this.map.scrollZoom.disable();
+    this.onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      if (!this.map) return;
+      // Normalize across pixel (trackpad) / line (mouse wheel) / page delta modes
+      let delta: number;
+      if (e.deltaMode === 0)      delta = -e.deltaY * 0.003;  // trackpad pixels
+      else if (e.deltaMode === 1) delta = -e.deltaY * 0.15;   // mouse wheel lines
+      else                        delta = -e.deltaY * 0.8;    // pages
+      const next = Math.min(18, Math.max(13, this.map.getZoom() + delta));
+      this.map.easeTo({ zoom: next, duration: 120 });
+    };
+    container.addEventListener("wheel", this.onWheel, { passive: false });
+
     this.map.on("load", () => {
       if (!this.map) return;
-      // Enforce zoom limits after load so scroll wheel also respects them
       this.map.setMinZoom(13);
       this.map.setMaxZoom(18);
-      this.map.scrollZoom.enable();
-      setup3D(this.map, this.buildingColors);
-      setupFollowerLayer(this.map, []);
     });
 
+    // style.load fires on every style (re)load — re-add custom layers each time,
+    // restoring the last known followers so dots don't disappear.
     this.map.on("style.load", () => {
-      if (this.map) {
-        setup3D(this.map, this.buildingColors);
-        setupFollowerLayer(this.map, []);
-      }
+      if (!this.map) return;
+      setup3D(this.map, this.buildingColors);
+      setupFollowerLayer(this.map, this.lastFollowers);
     });
   }
 
@@ -509,6 +525,7 @@ export class TorontoMapboxScene {
   }
 
   setFollowers(followers: MapFollower[]): void {
+    this.lastFollowers = followers;
     if (!this.map) return;
     const source = this.map.getSource("followers");
     if (source && "setData" in source) {
@@ -528,6 +545,9 @@ export class TorontoMapboxScene {
     cancelAnimationFrame(this.animationId);
     if (this.onMouseMove) window.removeEventListener("mousemove", this.onMouseMove);
     if (this.onMouseUp) window.removeEventListener("mouseup", this.onMouseUp);
+    if (this.onWheel && this.map) {
+      this.map.getContainer().removeEventListener("wheel", this.onWheel);
+    }
     if (this.map) {
       this.map.remove();
       this.map = null;
