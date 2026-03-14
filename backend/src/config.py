@@ -4,15 +4,9 @@ from urllib.parse import urlparse, urlunparse, urlencode, parse_qs
 from pydantic import computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Path: backend/src/config.py
-# .env is at PROJECT ROOT: /Users/patrickwei/genai-genesis/.env
-# parent(0) = src/, parent(1) = backend/, parent(2) = genai-genesis/
-_ENV_FILE = Path(__file__).resolve().parent.parent.parent / ".env"
-
-
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=str(_ENV_FILE),
+        env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -60,3 +54,4 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
