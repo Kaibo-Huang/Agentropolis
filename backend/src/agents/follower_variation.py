@@ -20,7 +20,8 @@ follower_variation_agent = rt.agent_node(
     llm=follower_llm,
     system_message=(
         "Given an archetype's action plan and follower details, generate slight variations.\n"
-        "Vary: timing offsets (+-15 min), minor location differences (same region),\n"
+        "Vary: timing offsets (+-15 min), minor location differences within the same\n"
+        "neighborhood (if at home) or work district (if at work),\n"
         "whether they post a tweet (~10% should), happiness delta scaled by their volatility.\n"
         "Return JSON array of follower updates."
     ),
@@ -63,8 +64,11 @@ def build_follower_variation_prompt(archetype, archetype_response, followers):
         ]
     )
 
+    home = getattr(archetype, "home_neighborhood", None) or archetype.region
+    work = getattr(archetype, "work_district", None) or archetype.region
+
     return (
-        f"Archetype: {archetype.industry} workers in {archetype.region}\n"
+        f"Archetype: {archetype.industry} workers living in {home}, working in {work}\n"
         f"Archetype actions for this tick:\n{actions_json}\n\n"
         f"Followers to generate variations for:\n{followers_json}\n\n"
         "Generate one variation per follower. For each follower:\n"
