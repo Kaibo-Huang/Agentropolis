@@ -139,6 +139,74 @@ async def run_hourly_tick(
     }
 
 
+async def _prefetch_archetype_context(
+    db: AsyncSession,
+    session_id: uuid.UUID,
+    archetype: Archetype,
+    current_time: datetime,
+    target_time: datetime,
+) -> dict:
+    """Pre-fetch all context data in parallel for the archetype agent.
+
+    Runs all 6 DB queries concurrently with asyncio.gather, replacing the
+    sequential tool-call round trips the LLM would otherwise make.
+    """
+    home = getattr(archetype, "home_neighborhood", None) or archetype.region
+    work = getattr(archetype, "work_district", None) or archetype.region
+    next_tick_time = target_time + timedelta(hours=1)
+
+    (
+        events,
+        memories,
+        follower_stats,
+        work_locations,
+        home_locations,
+        relationships,
+    ) = await asyncio.gather(
+        queries.get_events_for_session(db, session_id),
+        queries.get_recent_memories(db, session_id, archetype.archetype_id, 10),
+        queries.get_follower_stats(db, session_id, archetype.archetype_id),
+        queries.get_locations_by_region(db, work, None),
+        queries.get_locations_by_region(db, home, None),
+        queries.get_relationship_summary(db, session_id, archetype.archetype_id),
+    )
+
+    return {
+        "current_time": current_time.isoformat(),
+        "actions_finish_at": current_time.isoformat(),
+        "next_tick_time": next_tick_time.isoformat(),
+        "events": [
+            {"prompt": e.event_prompt, "time": e.virtual_time.isoformat()}
+            for e in events
+        ],
+        "recent_memories": [
+            {
+                "time": m.virtual_time.isoformat(),
+                "action_type": m.action_type,
+                "duration": m.duration,
+                "thinking": m.thinking,
+            }
+            for m in memories
+        ],
+        "follower_stats": {
+            k: float(v) if v is not None else None
+            for k, v in follower_stats.items()
+        },
+        "work_locations": [
+            {"name": loc.name, "type": loc.type, "position": loc.position}
+            for loc in work_locations
+        ],
+        "home_locations": [
+            {"name": loc.name, "type": loc.type, "position": loc.position}
+            for loc in home_locations
+        ],
+        "relationships": {
+            k: float(v) if v is not None else None
+            for k, v in relationships.items()
+        },
+    }
+
+
 async def _process_single_archetype(
     session_id: uuid.UUID,
     archetype: Archetype,
@@ -154,8 +222,20 @@ async def _process_single_archetype(
     """
     async with AsyncSessionLocal() as db:
         # ------------------------------------------------------------------
-        # 1. Get archetype response from LLM (with retry + fallback)
+        # 1. Pre-fetch all context in parallel, then call LLM once (no tool loops)
         # ------------------------------------------------------------------
+        try:
+            prefetched_context = await _prefetch_archetype_context(
+                db, session_id, archetype, current_time, target_time
+            )
+        except Exception as e:
+            logger.warning(
+                "Context pre-fetch failed for archetype %d: %s — falling back to tool calls",
+                archetype.archetype_id,
+                e,
+            )
+            prefetched_context = None
+
         archetype_response = await _get_archetype_decision(
             db=db,
             session_id=session_id,
@@ -163,6 +243,7 @@ async def _process_single_archetype(
             current_time=current_time,
             target_time=target_time,
             tick_number=tick_number,
+            prefetched_context=prefetched_context,
         )
 
         # ------------------------------------------------------------------
@@ -240,36 +321,43 @@ async def _get_archetype_decision(
     current_time: datetime,
     target_time: datetime,
     tick_number: int,
+    prefetched_context: dict | None = None,
 ) -> ArchetypeResponse:
     """Get archetype decision with retry and deterministic fallback.
+
+    When prefetched_context is provided the agent has no tools and answers in
+    a single LLM call. Falls back to tool-based agent if context is None.
 
     Retry strategy:
       1. Normal call
       2. Retry with error context appended
-      3. Final retry with simplified prompt
+      3. Final retry
       4. Deterministic fallback (simulation never halts)
     """
-    agent = build_archetype_agent(archetype)
+    agent = build_archetype_agent(archetype, prefetched_context)
 
-    # Calculate time context
-    actions_finish_at = current_time  # simplified: previous actions already finished
-    next_tick_time = target_time + timedelta(hours=1)
+    # rt.Session context is only needed when using tool-based agent
+    session_context: dict = {}
+    if prefetched_context is None:
+        actions_finish_at = current_time
+        next_tick_time = target_time + timedelta(hours=1)
+        session_context = {
+            "session_id": session_id,
+            "archetype_id": archetype.archetype_id,
+            "region": archetype.region,
+            "home_neighborhood": getattr(archetype, "home_neighborhood", None) or archetype.region,
+            "work_district": getattr(archetype, "work_district", None) or archetype.region,
+            "db_session": db,
+            "virtual_time": current_time.isoformat(),
+            "actions_finish_at": actions_finish_at.isoformat(),
+            "next_tick_time": next_tick_time.isoformat(),
+        }
 
     for attempt in range(MAX_LLM_RETRIES):
         try:
             with rt.Session(
                 name=f"tick-{session_id}-arch-{archetype.archetype_id}",
-                context={
-                    "session_id": session_id,
-                    "archetype_id": archetype.archetype_id,
-                    "region": archetype.region,
-                    "home_neighborhood": getattr(archetype, "home_neighborhood", None) or archetype.region,
-                    "work_district": getattr(archetype, "work_district", None) or archetype.region,
-                    "db_session": db,
-                    "virtual_time": current_time.isoformat(),
-                    "actions_finish_at": actions_finish_at.isoformat(),
-                    "next_tick_time": next_tick_time.isoformat(),
-                },
+                context=session_context,
                 timeout=30.0,
                 save_state=False,
             ):
