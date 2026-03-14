@@ -287,66 +287,42 @@ function skinToneToHex(t: number): string {
   return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
 }
 
-/**
- * Draw simple stylized avatars (head + body) on a canvas overlay.
- * Each avatar uses skin color for head and outfit color for body.
- */
-function drawAvatars(
-  ctx: CanvasRenderingContext2D,
+/** Add Mapbox built-in circle layer for followers (avatar color from properties). */
+function setupFollowerLayer(
   map: mapboxgl.Map,
   followers: MapFollower[],
-  containerWidth: number,
-  containerHeight: number,
 ): void {
-  const zoom = map.getZoom();
-  const baseH = 14;
-  const avatarH = baseH * Math.pow(2, (zoom - 15) * 0.35);
-  const headR = avatarH * 0.35;
-  const bodyH = avatarH * 0.65;
-  const bodyW = avatarH * 0.5;
-
-  ctx.clearRect(0, 0, containerWidth, containerHeight);
-
-  for (const f of followers) {
-    if (!f.position) continue;
-    const pt = map.project(f.position);
-    const x = pt.x;
-    const y = pt.y;
-    if (x < -bodyW || x > containerWidth + bodyW || y < -avatarH || y > containerHeight + avatarH) continue;
-
-    const skinColor = f.avatar ? skinToneToHex(f.avatar.skinTone) : getArchetypeColor(f.archetype_id);
-    const outfitColor = f.avatar?.outfitColor ?? getArchetypeColor(f.archetype_id);
-    const opacity = 0.5 + 0.5 * f.happiness;
-
-    ctx.save();
-    ctx.globalAlpha = opacity;
-
-    // Body (rounded rect below head)
-    ctx.fillStyle = outfitColor;
-    const bodyTop = y - bodyH * 0.5;
-    const bodyLeft = x - bodyW / 2;
-    const br = bodyW * 0.3;
-    ctx.beginPath();
-    if (typeof ctx.roundRect === "function") {
-      ctx.roundRect(bodyLeft, bodyTop, bodyW, bodyH, br);
-    } else {
-      ctx.rect(bodyLeft, bodyTop, bodyW, bodyH);
-    }
-    ctx.fill();
-    ctx.strokeStyle = "rgba(255,255,255,0.6)";
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    // Head (circle)
-    ctx.fillStyle = skinColor;
-    ctx.beginPath();
-    ctx.arc(x, y - bodyH * 0.5 - headR, headR, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = "rgba(255,255,255,0.6)";
-    ctx.stroke();
-
-    ctx.restore();
-  }
+  if (map.getSource("followers")) return;
+  map.addSource("followers", {
+    type: "geojson",
+    data: buildFollowerGeoJSON(followers),
+  });
+  map.addLayer({
+    id: "followers-layer",
+    type: "circle",
+    source: "followers",
+    minzoom: 12,
+    paint: {
+      "circle-radius": [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        12, 2,
+        15, 5,
+        18, 8,
+      ],
+      "circle-color": ["get", "color"],
+      "circle-stroke-width": 1.5,
+      "circle-stroke-color": "rgba(255,255,255,0.9)",
+      "circle-opacity": [
+        "interpolate",
+        ["linear"],
+        ["get", "happiness"],
+        0, 0.4,
+        1, 1,
+      ],
+    },
+  });
 }
 
 function setup3D(
@@ -424,9 +400,6 @@ export class TorontoMapboxScene {
   private currentStyle: "light" | "dark" = "light";
   private readonly buildingColors: BuildingColorPalette;
   private followers: MapFollower[] = [];
-  private avatarCanvas: HTMLCanvasElement | null = null;
-  private avatarCtx: CanvasRenderingContext2D | null = null;
-  private avatarOverlay: HTMLElement | null = null;
   private container: HTMLElement;
   private userInteracting: boolean = false;
   private dragPos: { x: number; y: number } | null = null;
@@ -515,43 +488,9 @@ export class TorontoMapboxScene {
     this.map.on("style.load", () => {
       if (this.map) {
         setup3D(this.map, this.buildingColors);
-        this.setupAvatarOverlay();
+        setupFollowerLayer(this.map, []);
       }
     });
-  }
-
-  private setupAvatarOverlay(): void {
-    if (!this.map) return;
-    const mapContainer = this.map.getContainer();
-    const parent = mapContainer.parentElement;
-    if (!parent) return;
-
-    // Overlay as sibling of map container so we don't touch Mapbox's DOM
-    const overlay = document.createElement("div");
-    overlay.style.position = "fixed";
-    overlay.style.inset = "0";
-    overlay.style.pointerEvents = "none";
-    overlay.setAttribute("aria-hidden", "true");
-
-    const canvas = document.createElement("canvas");
-    canvas.style.display = "block";
-    canvas.style.width = "100%";
-    canvas.style.height = "100%";
-    overlay.appendChild(canvas);
-
-    const resize = () => {
-      const w = mapContainer.clientWidth;
-      const h = mapContainer.clientHeight;
-      canvas.width = w;
-      canvas.height = h;
-    };
-    resize();
-    this.map.on("resize", resize);
-
-    parent.appendChild(overlay);
-    this.avatarCanvas = canvas;
-    this.avatarCtx = canvas.getContext("2d");
-    this.avatarOverlay = overlay;
   }
 
   updateState(hourOfDay: number): void {
@@ -596,33 +535,23 @@ export class TorontoMapboxScene {
 
   setFollowers(followers: MapFollower[]): void {
     this.followers = followers;
-  }
-
-  private drawAvatarOverlay(): void {
-    if (!this.map || !this.avatarCanvas || !this.avatarCtx) return;
-    const w = this.map.getContainer().clientWidth;
-    const h = this.map.getContainer().clientHeight;
-    if (w <= 0 || h <= 0) return;
-    drawAvatars(this.avatarCtx, this.map, this.followers, w, h);
+    if (!this.map) return;
+    const source = this.map.getSource("followers");
+    if (source && "setData" in source) {
+      (source as mapboxgl.GeoJSONSource).setData(buildFollowerGeoJSON(followers));
+    }
   }
 
   startRenderLoop(getHourOfDay: () => number): void {
     const tick = () => {
       this.animationId = requestAnimationFrame(tick);
       this.updateState(getHourOfDay());
-      this.drawAvatarOverlay();
     };
     tick();
   }
 
   dispose(): void {
     cancelAnimationFrame(this.animationId);
-    this.avatarOverlay?.remove();
-    this.avatarOverlay = null;
-    this.avatarCanvas = null;
-    this.avatarCtx = null;
-    if (this.onMouseMove) window.removeEventListener("mousemove", this.onMouseMove);
-    if (this.onMouseUp) window.removeEventListener("mouseup", this.onMouseUp);
     if (this.map) {
       this.map.remove();
       this.map = null;
