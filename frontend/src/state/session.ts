@@ -181,14 +181,17 @@ export class SessionController {
       );
 
       if (prevPhase === "ready") this.setPhase("ready");
+      else if (prevPhase === "auto_running") this.setPhase("auto_running");
     } catch (err) {
       this.cb.onError(err instanceof Error ? err : new Error(String(err)));
       if (prevPhase === "ready") this.setPhase("ready");
+      else if (prevPhase === "auto_running") this.setPhase("auto_running");
     }
   }
 
   startAutoRun(): void {
-    if (this.phase !== "ready") return;
+    if (this.phase !== "ready" && this.phase !== "auto_running") return;
+    if (this.phase === "auto_running") return;
     this.setPhase("auto_running");
     this.autoRunLoop();
   }
