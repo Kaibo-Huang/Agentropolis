@@ -434,11 +434,23 @@ export class TorontoMapboxScene {
       container.style.cursor = "grabbing";
     });
 
+    const BOUNDS_W = -79.42, BOUNDS_E = -79.32, BOUNDS_S = 43.62, BOUNDS_N = 43.69;
+    const clampCenter = () => {
+      if (!this.map) return;
+      const c = this.map.getCenter();
+      const lng = Math.max(BOUNDS_W, Math.min(BOUNDS_E, c.lng));
+      const lat = Math.max(BOUNDS_S, Math.min(BOUNDS_N, c.lat));
+      if (lng !== c.lng || lat !== c.lat) {
+        this.map.setCenter([lng, lat]);
+      }
+    };
+
     this.onMouseMove = (e: MouseEvent) => {
       if (!this.dragPos || !this.map) return;
       const dx = e.clientX - this.dragPos.x;
       const dy = e.clientY - this.dragPos.y;
       this.map.panBy([-dx, -dy], { duration: 0 });
+      clampCenter();
       this.dragPos = { x: e.clientX, y: e.clientY };
     };
 
@@ -466,17 +478,18 @@ export class TorontoMapboxScene {
     // Disable Mapbox's built-in scroll zoom — it drifts north on pitched maps
     // because it zooms toward the raycasted ground point under the cursor.
     // Replace with a center-based zoom that uses easeTo so it never drifts.
+    // Disable Mapbox's built-in scroll zoom (drifts north on pitched maps).
+    // Use jumpTo so rapid events accumulate instantly without interrupting each other.
     this.map.scrollZoom.disable();
     this.onWheel = (e: WheelEvent) => {
       e.preventDefault();
       if (!this.map) return;
-      // Normalize across pixel (trackpad) / line (mouse wheel) / page delta modes
       let delta: number;
-      if (e.deltaMode === 0)      delta = -e.deltaY * 0.003;  // trackpad pixels
-      else if (e.deltaMode === 1) delta = -e.deltaY * 0.15;   // mouse wheel lines
-      else                        delta = -e.deltaY * 0.8;    // pages
+      if (e.deltaMode === 0)      delta = -e.deltaY * 0.008;  // trackpad pixels
+      else if (e.deltaMode === 1) delta = -e.deltaY * 0.4;    // mouse wheel lines
+      else                        delta = -e.deltaY * 1.5;    // pages
       const next = Math.min(18, Math.max(13, this.map.getZoom() + delta));
-      this.map.easeTo({ zoom: next, duration: 120 });
+      this.map.jumpTo({ zoom: next });
     };
     container.addEventListener("wheel", this.onWheel, { passive: false });
 
