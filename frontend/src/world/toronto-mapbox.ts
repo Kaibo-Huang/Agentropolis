@@ -5,7 +5,7 @@
  */
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
-import type { CityState } from "../types/city-state.js";
+import type { CityState } from "agentropolis";
 
 /** Hex colors for building height gradient (low → high). Default: warm to cool. */
 export type BuildingColorPalette = readonly [string, string, ...string[]];
@@ -540,3 +540,4 @@ export class TorontoMapboxScene {
     }
   }
 }
+

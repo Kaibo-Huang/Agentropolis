@@ -1,12 +1,12 @@
 /**
  * Web app entry: Mapbox Toronto map + city simulation. Map driven by engine state.
  */
-import type { CityState } from "./types/city-state.js";
+import type { CityState } from "agentropolis";
 import {
   SimulationEngine,
   DEFAULT_CITY_STATE,
   SAMPLE_EVENTS,
-} from "./index.js";
+} from "agentropolis";
 import { TorontoMapboxScene } from "./world/toronto-mapbox.js";
 
 const logEntries: string[] = [];
@@ -49,7 +49,9 @@ function renderMetrics(state: Readonly<CityState>) {
   if (statsEl) {
     statsEl.innerHTML = STAT_PILLS.map(
       (p) =>
-        `<span class="stat-pill"><span class="label">${escapeHtml(p.label)}</span><span class="value">${formatMetric(state[p.key])}</span></span>`
+        `<span class="stat-pill"><span class="label">${escapeHtml(
+          p.label
+        )}</span><span class="value">${formatMetric(state[p.key])}</span></span>`
     ).join("");
   }
   const dayEl = document.getElementById("day-display");
@@ -122,10 +124,13 @@ for (const [id, ev] of Object.entries(SAMPLE_EVENTS)) {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "event-btn";
-  btn.innerHTML = `<span class="name">${escapeHtml(ev.name)}</span><span class="desc">${escapeHtml(ev.description ?? "")}</span>`;
+  btn.innerHTML = `<span class="name">${escapeHtml(
+    ev.name
+  )}</span><span class="desc">${escapeHtml(ev.description ?? "")}</span>`;
   btn.addEventListener("click", () => applyEvent(id));
   grid.appendChild(btn);
 }
 
 log("Simulation started — Toronto (Mapbox).");
 renderMetrics(engine.state);
+
