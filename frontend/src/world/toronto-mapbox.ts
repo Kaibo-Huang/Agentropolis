@@ -442,7 +442,7 @@ export class TorontoMapboxScene {
       // Downtown Toronto core: Bathurst → DVP, waterfront → Bloor
       maxBounds: [
         [-79.42, 43.62], // SW: Bathurst & lakeshore
-        [-79.32, 43.69], // NE: DVP & Bloor
+        [-79.34, 43.69], // NE: just east of DVP & Bloor
       ],
     });
 
@@ -458,7 +458,7 @@ export class TorontoMapboxScene {
       container.style.cursor = "grabbing";
     });
 
-    const BOUNDS_W = -79.42, BOUNDS_E = -79.32, BOUNDS_S = 43.62, BOUNDS_N = 43.69;
+    const BOUNDS_W = -79.41, BOUNDS_E = -79.37, BOUNDS_S = 43.62, BOUNDS_N = 43.66;
     const clampCenter = () => {
       if (!this.map) return;
       const c = this.map.getCenter();
