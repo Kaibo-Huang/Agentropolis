@@ -84,10 +84,16 @@ export class SessionController {
     return this.session ? new Date(this.session.virtual_time) : null;
   }
 
-  /** Returns the UTC hour (0-23) from virtual_time, for day/night cycle. */
+  /** Returns the hour (0-23) in Toronto from virtual_time, for day/night cycle. */
   getHourOfDay(): number {
     const vt = this.getVirtualTime();
-    return vt ? vt.getUTCHours() : 8;
+    if (!vt) return 8;
+    const torontoHour = vt.toLocaleString("en-CA", {
+      timeZone: "America/Toronto",
+      hour: "numeric",
+      hour12: false,
+    });
+    return parseInt(torontoHour, 10) || 0;
   }
 
   // ── Lifecycle ──
@@ -175,7 +181,10 @@ export class SessionController {
       this.cb.onFollowersUpdate(this.followers);
       this.cb.onPostsUpdate(this.posts);
 
-      const vtDisplay = new Date(this.session.virtual_time).toLocaleString();
+      const vtDisplay = new Date(this.session.virtual_time).toLocaleString(
+        "en-CA",
+        { timeZone: "America/Toronto" },
+      );
       this.cb.onLog(
         `Tick ${tickResult.tick_number}: ${vtDisplay} (${tickResult.archetypes_processed} OK, ${tickResult.archetypes_failed} fail)`,
       );
