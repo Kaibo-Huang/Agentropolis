@@ -86,7 +86,7 @@ class GentleZoomControl {
   private zoom(direction: 1 | -1): void {
     if (!this.map) return;
     const current = this.map.getZoom();
-    const next = Math.min(18, Math.max(13, current + direction * ZOOM_DELTA));
+    const next = Math.min(18, Math.max(11, current + direction * ZOOM_DELTA));
     this.map.easeTo({ zoom: next, duration: 320 });
   }
 
@@ -407,16 +407,16 @@ export class TorontoMapboxScene {
       style: "mapbox://styles/mapbox/standard",
       center: TORONTO_CENTER,
       zoom: 14,
-      minZoom: 13,
+      minZoom: 11,
       maxZoom: 18,
       pitch: 40,
       maxPitch: 60,
       bearing: -20,
       antialias: true,
-      // Constrains the map center — tight box around downtown Toronto
+      // Bounds cover the Greater Toronto Area — center cannot leave this box
       maxBounds: [
-        [-79.52, 43.60], // SW: roughly Etobicoke / lakeshore
-        [-79.25, 43.72], // NE: roughly Don Valley / north of Bloor
+        [-79.75, 43.50], // SW: Mississauga / Lake Ontario
+        [-78.90, 43.90], // NE: Pickering / Richmond Hill
       ],
     });
 
@@ -457,8 +457,9 @@ export class TorontoMapboxScene {
     this.map.on("load", () => {
       if (!this.map) return;
       // Enforce zoom limits after load so scroll wheel also respects them
-      this.map.setMinZoom(13);
+      this.map.setMinZoom(11);
       this.map.setMaxZoom(18);
+      this.map.scrollZoom.enable();
       setup3D(this.map, this.buildingColors);
       setupFollowerLayer(this.map, []);
     });
