@@ -297,8 +297,15 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-// ── Bootstrap ──
+// ── Welcome screen ──
+
+const welcomeScreen = document.getElementById("welcome-screen")!;
+const btnWelcomeStart = document.getElementById("btn-welcome-start")!;
+
+btnWelcomeStart.addEventListener("click", () => {
+  welcomeScreen.classList.add("hidden");
+  log("Initializing Agentropolis...");
+  controller.createAndConnect();
+});
 
 updateAvatarPreview();
-log("Initializing Agentropolis...");
-controller.createAndConnect();
