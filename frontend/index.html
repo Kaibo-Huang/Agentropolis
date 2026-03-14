@@ -182,6 +182,34 @@
         color: var(--foreground);
         font-weight: 500;
       }
+      /* Follower popup (Mapbox) */
+      .follower-popup-container .mapboxgl-popup-content {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 0.75rem 1rem;
+        min-width: 10rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      }
+      .follower-popup-name {
+        font-family: var(--font-heading);
+        font-size: 0.9375rem;
+        color: var(--foreground);
+        display: block;
+        margin-bottom: 0.5rem;
+      }
+      .follower-popup-row {
+        font-family: var(--font-sans);
+        font-size: 0.8125rem;
+        color: var(--muted-foreground);
+      }
+      .follower-popup-row .follower-popup-label {
+        margin-right: 0.35rem;
+      }
+      .follower-popup-muted {
+        margin-top: 0.25rem;
+        font-size: 0.75rem;
+      }
       /* Events panel - slide-up sheet */
       #events-sheet {
         position: fixed;
