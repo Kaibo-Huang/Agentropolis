@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Alexandria:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
     <link
@@ -28,6 +28,7 @@
         --primary-foreground: #09090b;
         --radius: 0.625rem;
         --font-sans: "Inter", system-ui, sans-serif;
+        --font-heading: "Alexandria", var(--font-sans);
         --font-mono: "Geist Mono", ui-monospace, monospace;
       }
       * {
@@ -44,6 +45,9 @@
         color: var(--foreground);
         background: var(--background);
         -webkit-font-smoothing: antialiased;
+      }
+      h1, h2, h3, h4, h5, h6 {
+        font-family: var(--font-heading);
       }
       #canvas-container {
         position: fixed;
@@ -78,6 +82,7 @@
         gap: 0.5rem;
       }
       .hud-title {
+        font-family: var(--font-heading);
         font-size: 0.9375rem;
         font-weight: 600;
         letter-spacing: -0.02em;
@@ -142,7 +147,7 @@
         padding: 0.5rem 0;
       }
       .time-day {
-        font-family: var(--font-mono);
+        font-family: var(--font-heading);
         font-size: 1.25rem;
         font-weight: 600;
         letter-spacing: -0.02em;
@@ -160,7 +165,7 @@
         gap: 0.75rem;
       }
       .stat-pill {
-        font-family: var(--font-mono);
+        font-family: var(--font-heading);
         font-size: 0.7rem;
         padding: 0.25rem 0.5rem;
         background: var(--card);
@@ -196,6 +201,7 @@
         transform: translateY(0);
       }
       #events-sheet h2 {
+        font-family: var(--font-heading);
         font-size: 0.7rem;
         font-weight: 600;
         text-transform: uppercase;
@@ -248,6 +254,7 @@
         pointer-events: auto;
       }
       #tweet-panel h2 {
+        font-family: var(--font-heading);
         font-size: 0.7rem;
         font-weight: 600;
         text-transform: uppercase;
@@ -261,6 +268,7 @@
         font-size: 0.7rem;
       }
       .tweet-author {
+        font-family: var(--font-heading);
         font-weight: 600;
         color: var(--foreground);
         display: block;
@@ -296,6 +304,7 @@
         transform: translateY(0);
       }
       #avatar-sheet h2 {
+        font-family: var(--font-heading);
         font-size: 0.7rem;
         font-weight: 600;
         text-transform: uppercase;
@@ -336,9 +345,89 @@
         border: 2px solid var(--border);
       }
       #btn-avatar-join { margin-top: 0.5rem; }
+
+      /* Welcome screen */
+      #welcome-screen {
+        position: fixed;
+        inset: 0;
+        z-index: 100;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(160deg, #09090b 0%, #18181b 45%, #0f0f12 100%);
+        padding: 2rem;
+        transition: opacity 0.5s ease, visibility 0.5s ease;
+      }
+      #welcome-screen.hidden {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+      }
+      .welcome-content {
+        text-align: center;
+        max-width: 420px;
+      }
+      .welcome-title {
+        font-family: var(--font-heading);
+        font-size: clamp(1.75rem, 5vw, 2.5rem);
+        font-weight: 700;
+        letter-spacing: -0.03em;
+        margin: 0 0 0.5rem 0;
+        color: var(--foreground);
+        line-height: 1.15;
+      }
+      .welcome-tagline {
+        font-family: var(--font-sans);
+        font-size: 1rem;
+        color: var(--muted-foreground);
+        margin: 0 0 2rem 0;
+        line-height: 1.5;
+      }
+      .welcome-features {
+        font-family: var(--font-sans);
+        text-align: left;
+        font-size: 0.8125rem;
+        color: var(--muted-foreground);
+        margin-bottom: 2rem;
+        list-style: none;
+        padding: 0;
+      }
+      .welcome-features li {
+        padding: 0.35rem 0;
+        padding-left: 1.25rem;
+        position: relative;
+      }
+      .welcome-features li::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 0.6rem;
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: var(--primary);
+      }
+      #btn-welcome-start {
+        font-size: 1rem;
+        padding: 0.65rem 1.75rem;
+      }
     </style>
   </head>
   <body>
+    <div id="welcome-screen">
+      <div class="welcome-content">
+        <h1 class="welcome-title">Agentropolis</h1>
+        <p class="welcome-tagline">A living city simulation. Watch AI agents move through Toronto — run time, create your avatar, and inject events.</p>
+        <ul class="welcome-features">
+          <li>Moving arrows show where each agent is heading</li>
+          <li>Tick or Auto-Run to advance the simulation</li>
+          <li>Create your avatar and join the crowd</li>
+          <li>Inject events to shape the city</li>
+        </ul>
+        <button type="button" class="btn btn-primary" id="btn-welcome-start">Enter the city</button>
+      </div>
+    </div>
     <div id="canvas-container"></div>
     <header id="hud">
       <div class="hud-left">

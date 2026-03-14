@@ -301,6 +301,34 @@ function getArchetypeColor(archetypeId: number): string {
   return ARCHETYPE_COLORS[archetypeId];
 }
 
+const TRAVEL_DURATION_MS = 3000;
+
+function easeInOut(t: number): number {
+  return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+}
+
+function interpolateFollowers(
+  from: MapFollower[],
+  to: MapFollower[],
+  t: number,
+): MapFollower[] {
+  const fromMap = new Map<number, LngLat>(
+    from.flatMap(f => f.position ? [[f.follower_id, f.position]] : [])
+  );
+  return to.map(f => {
+    if (!f.position) return f;
+    const prev = fromMap.get(f.follower_id);
+    if (!prev) return f;
+    return {
+      ...f,
+      position: [
+        prev[0] + (f.position[0] - prev[0]) * t,
+        prev[1] + (f.position[1] - prev[1]) * t,
+      ] as LngLat,
+    };
+  });
+}
+
 function buildFollowerGeoJSON(
   followers: MapFollower[],
 ): GeoJSON.FeatureCollection<GeoJSON.Point> {
@@ -550,6 +578,9 @@ export class TorontoMapboxScene {
   private onMouseUp: (() => void) | null = null;
   private onWheel: ((e: WheelEvent) => void) | null = null;
   private lastFollowers: MapFollower[] = [];
+  private animFromFollowers: MapFollower[] = [];
+  private animToFollowers: MapFollower[] = [];
+  private animStartTime: number = -1;
 
   constructor(options: TorontoMapboxOptions) {
     const { container, buildingColors } = options;
@@ -583,7 +614,7 @@ export class TorontoMapboxScene {
       // Downtown Toronto core: Bathurst → DVP, waterfront → Bloor
       maxBounds: [
         [-79.42, 43.62], // SW: Bathurst & lakeshore
-        [-79.32, 43.69], // NE: DVP & Bloor
+        [-79.34, 43.69], // NE: just east of DVP & Bloor
       ],
     });
 
@@ -700,17 +731,32 @@ export class TorontoMapboxScene {
         } as any);
       }
     }
+
+    // Animate follower dots from their previous positions to the new ones.
+    if (this.animToFollowers.length > 0 && this.animStartTime >= 0) {
+      const raw = (performance.now() - this.animStartTime) / TRAVEL_DURATION_MS;
+      const t = easeInOut(Math.min(raw, 1));
+      const interpolated = interpolateFollowers(this.animFromFollowers, this.animToFollowers, t);
+      const source = this.map.getSource("followers");
+      if (source && "setData" in source) {
+        (source as mapboxgl.GeoJSONSource).setData(buildFollowerGeoJSON(interpolated));
+      }
+    }
   }
 
   setFollowers(followers: MapFollower[]): void {
-    if (!this.map) return;
-    // Skip rebuild if same reference (no change)
     if (followers === this.lastFollowers) return;
+    // Snapshot current display positions as the animation start
+    this.animFromFollowers = this.animToFollowers.length > 0
+      ? interpolateFollowers(
+          this.animFromFollowers,
+          this.animToFollowers,
+          this.animStartTime < 0 ? 1 : Math.min((performance.now() - this.animStartTime) / TRAVEL_DURATION_MS, 1),
+        )
+      : followers;
+    this.animToFollowers = followers;
+    this.animStartTime = performance.now();
     this.lastFollowers = followers;
-    const source = this.map.getSource("followers");
-    if (source && "setData" in source) {
-      (source as mapboxgl.GeoJSONSource).setData(buildFollowerGeoJSON(followers));
-    }
   }
 
   startRenderLoop(getHourOfDay: () => number): void {
