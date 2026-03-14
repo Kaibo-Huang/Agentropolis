@@ -65,7 +65,7 @@ class GentleZoomControl {
     if (!this.map) return;
     const current = this.map.getZoom();
     const next = Math.min(22, Math.max(0, current + direction * ZOOM_DELTA));
-    this.map.easeTo({ zoom: next, duration: 200 });
+    this.map.easeTo({ zoom: next, duration: 320 });
   }
 
   onRemove(): void {
@@ -437,7 +437,8 @@ export class TorontoMapboxScene {
     this.map = new mapboxgl.Map({
       container,
       accessToken: token,
-      style: "mapbox://styles/mapbox/light-v11",
+      // Mapbox Standard (vector) for a clean, modern base map.
+      style: "mapbox://styles/mapbox/standard",
       center: TORONTO_CENTER,
       zoom: 15.5,
       pitch: 60,
@@ -472,14 +473,38 @@ export class TorontoMapboxScene {
     if (!this.map) return;
     const timeOfDay = (day % 24) / 24;
     const isNight = timeOfDay < 0.25 || timeOfDay > 0.75;
-    const wantStyle = isNight ? "dark" : "light";
-    if (this.currentStyle === wantStyle) return;
-    this.currentStyle = wantStyle;
-    const styleUrl =
-      wantStyle === "dark"
-        ? "mapbox://styles/mapbox/dark-v11"
-        : "mapbox://styles/mapbox/light-v11";
-    this.map.setStyle(styleUrl);
+    const mode = isNight ? "dark" : "light";
+
+    // Soft camera motion over the day (slight pitch + bearing drift, Cities: Skylines‑style).
+    const basePitch = 60;
+    const pitchWobble = Math.cos(timeOfDay * Math.PI * 2) * 4;
+    this.map.setPitch(basePitch + pitchWobble);
+
+    const baseBearing = -20;
+    const bearingDrift = Math.sin(timeOfDay * Math.PI * 2) * 6;
+    this.map.setBearing(baseBearing + bearingDrift);
+
+    // Atmospheric fog for day/night mood.
+    if (this.currentStyle !== mode) {
+      this.currentStyle = mode;
+      if (isNight) {
+        this.map.setFog({
+          color: "#020617",
+          "horizon-blend": 0.35,
+          range: [0.6, 6.0],
+          "space-color": "#000010",
+          "star-intensity": 0.6,
+        } as any);
+      } else {
+        this.map.setFog({
+          color: "#e2e8f0",
+          "horizon-blend": 0.18,
+          range: [0.9, 8.0],
+          "space-color": "#0b1120",
+          "star-intensity": 0.0,
+        } as any);
+      }
+    }
   }
 
   private updatePedestrians(): void {
