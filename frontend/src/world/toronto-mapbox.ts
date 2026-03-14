@@ -489,7 +489,7 @@ export class TorontoMapboxScene {
       container.style.cursor = "grabbing";
     });
 
-    const BOUNDS_W = -79.41, BOUNDS_E = -79.37, BOUNDS_S = 43.62, BOUNDS_N = 43.66;
+    const BOUNDS_W = -79.41, BOUNDS_E = -79.37, BOUNDS_S = 43.63, BOUNDS_N = 43.66;
     const clampCenter = () => {
       if (!this.map) return;
       const c = this.map.getCenter();
