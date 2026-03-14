@@ -1,5 +1,5 @@
 /**
- * Web app entry: 3D Toronto + city simulation. Three.js scene driven by engine state.
+ * Web app entry: Mapbox Toronto map + city simulation. Map driven by engine state.
  */
 import type { CityState } from "./types/city-state.js";
 import {
@@ -7,7 +7,7 @@ import {
   DEFAULT_CITY_STATE,
   SAMPLE_EVENTS,
 } from "./index.js";
-import { TorontoScene } from "./world/toronto-scene.js";
+import { TorontoMapboxScene } from "./world/toronto-mapbox.js";
 
 const logEntries: string[] = [];
 const maxLogEntries = 50;
@@ -110,12 +110,9 @@ const engine = new SimulationEngine(
   }
 );
 
-const canvasContainer = document.getElementById("canvas-container")!;
-const canvas = document.createElement("canvas");
-canvas.id = "toronto-canvas";
-canvasContainer.appendChild(canvas);
+const mapContainer = document.getElementById("canvas-container")!;
 
-const torontoScene = new TorontoScene({ canvas });
+const torontoScene = new TorontoMapboxScene({ container: mapContainer });
 torontoScene.startRenderLoop(() => ({
   state: engine.state,
   day: engine.day,
@@ -134,5 +131,5 @@ for (const [id, ev] of Object.entries(SAMPLE_EVENTS)) {
   grid.appendChild(btn);
 }
 
-log("Simulation started — Toronto 3D.");
+log("Simulation started — Toronto (Mapbox).");
 renderMetrics(engine.state);
