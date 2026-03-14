@@ -50,43 +50,44 @@
         font-family: var(--font-heading);
       }
       /* Follower popup (Mapbox) */
-      .follower-popup-container.mapboxgl-popup .mapboxgl-popup-content {
+      .follower-popup-container .mapboxgl-popup-content {
+        padding: 0;
         background: var(--card);
-        color: var(--card-foreground);
         border: 1px solid var(--border);
         border-radius: var(--radius);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+        min-width: 12rem;
+      }
+      .follower-popup-container .mapboxgl-popup-tip {
+        border-top-color: var(--card);
+      }
+      .follower-popup {
         padding: 0.75rem 1rem;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
         font-family: var(--font-sans);
         font-size: 0.8125rem;
+        color: var(--card-foreground);
       }
-      .follower-popup-container.mapboxgl-popup .mapboxgl-popup-tip {
-        border-top-color: var(--card);
-        border-bottom-color: var(--card);
-        left: 50%;
-        transform: translateX(-50%);
+      .follower-popup-name {
+        font-family: var(--font-heading);
+        font-weight: 600;
+        font-size: 1rem;
+        margin-bottom: 0.5rem;
+        color: var(--foreground);
       }
       .follower-popup-table {
-        border-collapse: collapse;
         width: 100%;
+        border-collapse: collapse;
+        font-size: 0.75rem;
       }
       .follower-popup-table td {
-        padding: 0.2rem 0.5rem 0.2rem 0;
+        padding: 0.2rem 0.25rem 0.2rem 0;
         vertical-align: top;
       }
-      .follower-popup-label {
+      .follower-popup-table .popup-label {
         color: var(--muted-foreground);
-        font-size: 0.75rem;
+        font-weight: 500;
         white-space: nowrap;
-      }
-      .follower-popup-section {
-        font-family: var(--font-heading);
-        font-size: 0.7rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: var(--muted-foreground);
-        padding-top: 0.5rem !important;
+        padding-right: 0.5rem;
       }
       #canvas-container {
         position: fixed;
