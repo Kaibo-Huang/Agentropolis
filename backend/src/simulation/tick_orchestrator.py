@@ -180,7 +180,7 @@ async def _process_single_archetype(
                     "archetype_id": archetype.archetype_id,
                     "virtual_time": target_time,
                     "action_type": action.action_type,
-                    "action_params": action.action_params,
+                    "action_params": action.action_params.model_dump(),
                     "duration": action.duration,
                     "thinking": action.thinking,
                 }
@@ -283,10 +283,11 @@ async def _get_archetype_decision(
                 return result.structured
         except Exception as e:
             logger.warning(
-                "Archetype %d LLM attempt %d failed: %s",
+                "Archetype %d LLM attempt %d failed: %s (cause: %s)",
                 archetype.archetype_id,
                 attempt + 1,
                 e,
+                e.__cause__,
             )
             if attempt == MAX_LLM_RETRIES - 1:
                 logger.error(

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from src.agents.schemas import ArchetypeAction, ArchetypeResponse
+from src.agents.schemas import ActionParams, ArchetypeAction, ArchetypeResponse
 
 
 def generate_fallback_actions(virtual_time: datetime) -> ArchetypeResponse:
@@ -34,7 +34,7 @@ def generate_fallback_actions(virtual_time: datetime) -> ArchetypeResponse:
         actions = [
             ArchetypeAction(
                 action_type="sleep",
-                action_params={},
+                action_params=ActionParams(),
                 duration=6.0 - hour,
                 thinking="Sleeping through the night (fallback).",
             )
@@ -43,13 +43,13 @@ def generate_fallback_actions(virtual_time: datetime) -> ArchetypeResponse:
         actions = [
             ArchetypeAction(
                 action_type="eat",
-                action_params={},
+                action_params=ActionParams(),
                 duration=0.5,
                 thinking="Morning breakfast (fallback).",
             ),
             ArchetypeAction(
                 action_type="commute",
-                action_params={},
+                action_params=ActionParams(),
                 duration=0.5,
                 thinking="Commuting to work (fallback).",
             ),
@@ -58,7 +58,7 @@ def generate_fallback_actions(virtual_time: datetime) -> ArchetypeResponse:
         actions = [
             ArchetypeAction(
                 action_type="work",
-                action_params={},
+                action_params=ActionParams(),
                 duration=min(5, 12 - hour),
                 thinking="Working morning shift (fallback).",
             )
@@ -67,7 +67,7 @@ def generate_fallback_actions(virtual_time: datetime) -> ArchetypeResponse:
         actions = [
             ArchetypeAction(
                 action_type="eat",
-                action_params={},
+                action_params=ActionParams(),
                 duration=1.0,
                 thinking="Lunch break (fallback).",
             )
@@ -76,7 +76,7 @@ def generate_fallback_actions(virtual_time: datetime) -> ArchetypeResponse:
         actions = [
             ArchetypeAction(
                 action_type="work",
-                action_params={},
+                action_params=ActionParams(),
                 duration=min(4, 17 - hour),
                 thinking="Working afternoon shift (fallback).",
             )
@@ -85,7 +85,7 @@ def generate_fallback_actions(virtual_time: datetime) -> ArchetypeResponse:
         actions = [
             ArchetypeAction(
                 action_type="commute",
-                action_params={},
+                action_params=ActionParams(),
                 duration=1.0,
                 thinking="Commuting home (fallback).",
             )
@@ -94,7 +94,7 @@ def generate_fallback_actions(virtual_time: datetime) -> ArchetypeResponse:
         actions = [
             ArchetypeAction(
                 action_type="eat",
-                action_params={},
+                action_params=ActionParams(),
                 duration=1.0,
                 thinking="Dinner at home (fallback).",
             )
@@ -103,7 +103,7 @@ def generate_fallback_actions(virtual_time: datetime) -> ArchetypeResponse:
         actions = [
             ArchetypeAction(
                 action_type="socialize",
-                action_params={},
+                action_params=ActionParams(),
                 duration=min(3, 22 - hour),
                 thinking="Evening leisure time (fallback).",
             )
@@ -112,7 +112,7 @@ def generate_fallback_actions(virtual_time: datetime) -> ArchetypeResponse:
         actions = [
             ArchetypeAction(
                 action_type="sleep",
-                action_params={},
+                action_params=ActionParams(),
                 duration=24 - hour + 6,
                 thinking="Going to sleep for the night (fallback).",
             )
