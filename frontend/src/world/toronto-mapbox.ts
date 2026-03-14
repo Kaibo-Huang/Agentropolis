@@ -364,6 +364,39 @@ function skinToneToHex(t: number): string {
   return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
 }
 
+/** Build HTML for follower popup (uses app CSS vars / classes when in index.html). */
+function buildFollowerPopupContent(f: MapFollower): string {
+  const pos = f.position ? `${f.position[1].toFixed(5)}, ${f.position[0].toFixed(5)}` : "—";
+  const happinessPct = Math.round(f.happiness * 100);
+  let rows = `
+    <tr><td class="follower-popup-label">Name</td><td>${escapeHtml(f.name)}</td></tr>
+    <tr><td class="follower-popup-label">ID</td><td>${f.follower_id}</td></tr>
+    <tr><td class="follower-popup-label">Archetype</td><td>${f.archetype_id}</td></tr>
+    <tr><td class="follower-popup-label">Happiness</td><td>${happinessPct}%</td></tr>
+    <tr><td class="follower-popup-label">Position</td><td>${pos}</td></tr>
+  `;
+  if (f.avatar) {
+    const a = f.avatar;
+    rows += `
+    <tr><td colspan="2" class="follower-popup-section">Avatar</td></tr>
+    <tr><td class="follower-popup-label">Skin tone</td><td>${a.skinTone.toFixed(2)}</td></tr>
+    <tr><td class="follower-popup-label">Body type</td><td>${escapeHtml(a.bodyType)}</td></tr>
+    <tr><td class="follower-popup-label">Hair</td><td>${escapeHtml(a.hairTexture)} / ${escapeHtml(a.hairStyle)} / ${escapeHtml(a.hairColor)}</td></tr>
+    <tr><td class="follower-popup-label">Outfit</td><td>${escapeHtml(a.outfit)} (${escapeHtml(a.outfitColor)})</td></tr>
+    ${a.accessories.length ? `<tr><td class="follower-popup-label">Accessories</td><td>${escapeHtml(a.accessories.join(", "))}</td></tr>` : ""}
+    `;
+  }
+  return `<div class="follower-popup"><table class="follower-popup-table">${rows}</table></div>`;
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 /** Add Mapbox built-in circle layer for followers (avatar color from properties). */
 function setupFollowerLayer(
   map: mapboxgl.Map,
@@ -575,12 +608,13 @@ export class TorontoMapboxScene {
   private userInteracting: boolean = false;
   private dragPos: { x: number; y: number } | null = null;
   private onMouseMove: ((e: MouseEvent) => void) | null = null;
-  private onMouseUp: (() => void) | null = null;
+  private onMouseUp: ((e: MouseEvent) => void) | null = null;
   private onWheel: ((e: WheelEvent) => void) | null = null;
   private lastFollowers: MapFollower[] = [];
   private animFromFollowers: MapFollower[] = [];
   private animToFollowers: MapFollower[] = [];
   private animStartTime: number = -1;
+  private followerPopup: mapboxgl.Popup | null = null;
 
   constructor(options: TorontoMapboxOptions) {
     const { container, buildingColors } = options;
@@ -625,6 +659,7 @@ export class TorontoMapboxScene {
       if (e.button !== 0) return;
       // Don't intercept clicks on Mapbox controls (zoom buttons, etc.)
       if ((e.target as HTMLElement).closest(".mapboxgl-ctrl")) return;
+      if ((e.target as HTMLElement).closest(".mapboxgl-popup")) return;
       this.dragPos = { x: e.clientX, y: e.clientY };
       this.userInteracting = true;
       container.style.cursor = "grabbing";
@@ -650,15 +685,52 @@ export class TorontoMapboxScene {
       this.dragPos = { x: e.clientX, y: e.clientY };
     };
 
-    this.onMouseUp = () => {
-      if (!this.dragPos) return;
+    const CLICK_THRESHOLD_PX = 6;
+    this.onMouseUp = (e: MouseEvent) => {
+      if (!this.dragPos || !this.map) return;
+      const dx = e.clientX - this.dragPos.x;
+      const dy = e.clientY - this.dragPos.y;
+      const isClick = dx * dx + dy * dy < CLICK_THRESHOLD_PX * CLICK_THRESHOLD_PX;
       this.dragPos = null;
       this.userInteracting = false;
       container.style.cursor = "";
+
+      if (isClick) {
+        const rect = this.map.getCanvas().getBoundingClientRect();
+        const point: [number, number] = [e.clientX - rect.left, e.clientY - rect.top];
+        const features = this.map.queryRenderedFeatures(point, { layers: ["followers-layer"] });
+        if (features.length > 0) {
+          const props = features[0].properties as { id?: number };
+          const id = props?.id;
+          if (id != null) {
+            const follower = this.lastFollowers.find((f) => f.follower_id === id);
+            if (follower) {
+              const geom = features[0].geometry;
+              const coords = geom.type === "Point" ? (geom as GeoJSON.Point).coordinates : null;
+              const lngLat = coords && coords.length >= 2 ? ([coords[0], coords[1]] as [number, number]) : follower.position;
+              if (lngLat) {
+                if (this.followerPopup) this.followerPopup.remove();
+                this.followerPopup = new mapboxgl.Popup({ closeButton: true, closeOnClick: false, className: "follower-popup-container", offset: [120, 0] })
+                  .setLngLat(lngLat)
+                  .setHTML(buildFollowerPopupContent(follower))
+                  .addTo(this.map);
+                this.followerPopup.on("close", () => { this.followerPopup = null; });
+              }
+            }
+          }
+        }
+      }
     };
 
     window.addEventListener("mousemove", this.onMouseMove);
     window.addEventListener("mouseup", this.onMouseUp);
+
+    // Cursor pointer when hovering over a follower
+    this.map.on("mousemove", (e) => {
+      if (!this.map || this.dragPos) return;
+      const features = this.map.queryRenderedFeatures(e.point, { layers: ["followers-layer"] });
+      this.map.getCanvas().style.cursor = features.length ? "pointer" : "";
+    });
 
     // Pause day-cycle pitch/bearing animation during any user interaction
     // (drag, rotate, zoom) so setPitch/setBearing don't interrupt easeTo animations.
@@ -771,6 +843,10 @@ export class TorontoMapboxScene {
     cancelAnimationFrame(this.animationId);
     if (this.onMouseMove) window.removeEventListener("mousemove", this.onMouseMove);
     if (this.onMouseUp) window.removeEventListener("mouseup", this.onMouseUp);
+    if (this.followerPopup) {
+      this.followerPopup.remove();
+      this.followerPopup = null;
+    }
     if (this.onWheel && this.map) {
       this.map.getContainer().removeEventListener("wheel", this.onWheel);
     }
