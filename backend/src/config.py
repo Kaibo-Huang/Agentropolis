@@ -4,16 +4,19 @@ from urllib.parse import urlparse, urlunparse, urlencode, parse_qs
 from pydantic import computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Load .env from project root (parent of backend/) when running from backend/
+_ROOT_ENV = Path(__file__).resolve().parent.parent.parent / ".env"
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(_ROOT_ENV if _ROOT_ENV.exists() else ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
 
-    GOOGLE_CLOUD_PROJECT: str
-    OPENAI_API_KEY: str
-    NEON_DB: str
+    GOOGLE_CLOUD_PROJECT: str = ""
+    OPENAI_API_KEY: str = ""
+    NEON_DB: str = ""
     YOUR_NEON_API_KEY: str | None = None
 
     @computed_field
@@ -33,7 +36,9 @@ class Settings(BaseSettings):
         and add ?ssl=true which asyncpg's SQLAlchemy dialect maps to
         connect_args={"ssl": True} automatically.
         """
-        raw = self.NEON_DB
+        raw = self.NEON_DB or ""
+        if not raw:
+            return ""
 
         # Normalise scheme
         if raw.startswith("postgresql://"):
