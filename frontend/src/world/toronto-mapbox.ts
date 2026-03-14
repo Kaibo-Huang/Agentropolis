@@ -680,15 +680,16 @@ export class TorontoMapboxScene {
 
     const CLICK_MOVE_THRESHOLD_PX = 6;
 
-    const tryShowFollowerPopup = (point: { x: number; y: number }) => {
-      if (!this.map || !this.followerPopup) return;
-      // Use a 20px box so small circles are easier to click
-      const d = 10;
-      const box: [mapboxgl.PointLike, mapboxgl.PointLike] = [
+    const d = 10;
+    const getBox = (point: { x: number; y: number }) =>
+      [
         [point.x - d, point.y - d],
         [point.x + d, point.y + d],
-      ];
-      const features = this.map.queryRenderedFeatures(box, {
+      ] as [mapboxgl.PointLike, mapboxgl.PointLike];
+
+    const tryShowFollowerPopup = (point: { x: number; y: number }) => {
+      if (!this.map || !this.followerPopup) return;
+      const features = this.map.queryRenderedFeatures(getBox(point), {
         layers: ["followers-layer"],
       });
       if (features.length === 0) return;
@@ -703,6 +704,23 @@ export class TorontoMapboxScene {
         .setLngLat(lngLat)
         .setHTML(buildFollowerPopupHTML(follower))
         .addTo(this.map);
+    };
+
+    const closeFollowerPopupWithAnimation = () => {
+      if (!this.followerPopup || !this.map) return;
+      if (!this.followerPopup.isOpen()) return;
+      const containerEl = this.map.getContainer();
+      const popupEl = containerEl.querySelector(".follower-popup-container");
+      if (!popupEl) {
+        this.followerPopup.remove();
+        return;
+      }
+      popupEl.classList.add("popup-closing");
+      const onEnd = () => {
+        popupEl.removeEventListener("transitionend", onEnd);
+        this.followerPopup?.remove();
+      };
+      popupEl.addEventListener("transitionend", onEnd);
     };
 
     // Manual drag-to-pan: bypass whatever is blocking Mapbox's internal dragPan.
@@ -747,10 +765,23 @@ export class TorontoMapboxScene {
 
       if (wasClick && this.map) {
         const rect = container.getBoundingClientRect();
-        tryShowFollowerPopup({
-          x: e.clientX - rect.left,
-          y: e.clientY - rect.top,
+        const point = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        const features = this.map.queryRenderedFeatures(getBox(point), {
+          layers: ["followers-layer"],
         });
+        const popupEl = this.map.getContainer().querySelector(".follower-popup-container");
+        const clickedOutsideCard = popupEl && !popupEl.contains(e.target as Node);
+        if (
+          this.followerPopup?.isOpen() &&
+          clickedOutsideCard &&
+          features.length === 0
+        ) {
+          closeFollowerPopupWithAnimation();
+          return;
+        }
+        if (features.length > 0) {
+          tryShowFollowerPopup(point);
+        }
       }
     };
 

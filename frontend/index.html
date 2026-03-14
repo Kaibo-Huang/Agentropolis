@@ -50,6 +50,14 @@
         font-family: var(--font-heading);
       }
       /* Follower popup – profile card above the dot */
+      .follower-popup-container {
+        transition: opacity 0.2s ease, transform 0.2s ease;
+      }
+      .follower-popup-container.popup-closing {
+        opacity: 0;
+        transform: scale(0.96);
+        pointer-events: none;
+      }
       .follower-popup-container .mapboxgl-popup-content {
         padding: 0;
         background: var(--card);
