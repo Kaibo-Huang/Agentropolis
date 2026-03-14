@@ -149,25 +149,143 @@ function lerpPath(path: [number, number][], t: number): [number, number] {
 
 // Default: warm (low) → cool (tall) gradient
 const DEFAULT_BUILDING_PALETTE: BuildingColorPalette = [
-  "#ABCCA3", // light teal
-  "#CAD5AD", // green
-  "#E9DDB6", // blue
-  "#E8CCBD", // blue-gray
-  "#E6BBC3", // mauve
+  "#819382", // light teal
+  "#93A294", // green
+  "#A5B2A6", // blue
+  "#B7C1B8", // blue-gray
+  "#DBE0DC", // mauve
 ];
 
-/** Build a Mapbox interpolate expression for fill-extrusion-color by height. */
+// Downtown Toronto neighborhood polygons (GeoJSON: [lng, lat], closed ring).
+// These are rough, but aligned more closely with real districts.
+const REGIONS: Array<{ name: string; color: string; polygon: GeoJSON.Polygon }> = [
+  // Roughly King St W / Queen St W between University and Yonge
+  {
+    name: "Financial District",
+    color: "#22c55e",
+    polygon: {
+      type: "Polygon",
+      coordinates: [
+        [
+          [-79.3875, 43.6465], // University & King
+          [-79.3780, 43.6465], // Yonge & King
+          [-79.3780, 43.6518], // Yonge & Queen
+          [-79.3875, 43.6518], // University & Queen
+          [-79.3875, 43.6465],
+        ],
+      ],
+    },
+  },
+  // South of Queen, west of University to Spadina
+  {
+    name: "Entertainment District",
+    color: "#3b82f6",
+    polygon: {
+      type: "Polygon",
+      coordinates: [
+        [
+          [-79.3965, 43.6425], // Spadina & King
+          [-79.3875, 43.6425], // University & King
+          [-79.3875, 43.6490], // University & Queen
+          [-79.3965, 43.6490], // Spadina & Queen
+          [-79.3965, 43.6425],
+        ],
+      ],
+    },
+  },
+  // Waterfront from Spadina to Jarvis
+  {
+    name: "Harbourfront",
+    color: "#0ea5e9",
+    polygon: {
+      type: "Polygon",
+      coordinates: [
+        [
+          [-79.3965, 43.6345], // Spadina & Queens Quay
+          [-79.3720, 43.6345], // Jarvis-ish & Queens Quay
+          [-79.3720, 43.6405],
+          [-79.3965, 43.6405],
+          [-79.3965, 43.6345],
+        ],
+      ],
+    },
+  },
+  // East of Yonge, south of King towards Distillery / St. Lawrence
+  {
+    name: "St. Lawrence / Distillery",
+    color: "#f59e0b",
+    polygon: {
+      type: "Polygon",
+      coordinates: [
+        [
+          [-79.3735, 43.6455], // Sherbourne & Front
+          [-79.3610, 43.6455], // Parliament
+          [-79.3610, 43.6535], // up to King/Front area
+          [-79.3735, 43.6535],
+          [-79.3735, 43.6455],
+        ],
+      ],
+    },
+  },
+  // Church-Wellesley area north of Carlton, east of Yonge
+  {
+    name: "Church-Wellesley",
+    color: "#a855f7",
+    polygon: {
+      type: "Polygon",
+      coordinates: [
+        [
+          [-79.3860, 43.6645], // Yonge & Wellesley
+          [-79.3725, 43.6645], // Jarvis-ish
+          [-79.3725, 43.6715], // north toward Bloor
+          [-79.3860, 43.6715],
+          [-79.3860, 43.6645],
+        ],
+      ],
+    },
+  },
+];
+
+/** Height-based color gradient (for default layer when not in a region). */
 function buildingColorExpression(
   palette: BuildingColorPalette
 ): mapboxgl.Expression {
   const stops: (number | string)[] = [];
   const n = palette.length;
-  const heightStops = [0, 25, 75, 150, 300]; // heights in m for gradient stops
+  const heightStops = [0, 25, 75, 150, 300];
   for (let i = 0; i < n; i++) {
     const h = heightStops[Math.min(i, heightStops.length - 1)];
     stops.push(h, palette[i]);
   }
   return ["interpolate", ["linear"], ["get", "height"], ...stops] as mapboxgl.Expression;
+}
+
+/** Common height/base paint; pass a color string or expression. */
+function buildingExtrusionPaint(
+  color: string | mapboxgl.Expression
+): Record<string, unknown> {
+  return {
+    "fill-extrusion-color": color,
+    "fill-extrusion-height": [
+      "interpolate",
+      ["linear"],
+      ["zoom"],
+      14,
+      0,
+      14.05,
+      ["get", "height"],
+    ],
+    "fill-extrusion-base": [
+      "interpolate",
+      ["linear"],
+      ["zoom"],
+      14,
+      0,
+      14.05,
+      ["get", "min_height"],
+    ],
+    "fill-extrusion-opacity": 0.9,
+  };
 }
 
 const PEDESTRIAN_COLORS = [
@@ -240,7 +358,6 @@ function setup3D(
     map.setTerrain({ source: "mapbox-dem", exaggeration: 1.2 });
   }
 
-  // 3D buildings (fill-extrusion) — skip if already added (e.g. same style reload)
   if (map.getLayer("add-3d-buildings")) return;
 
   const layers = map.getStyle().layers;
@@ -253,6 +370,34 @@ function setup3D(
   );
   const beforeId = labelLayer?.id;
 
+  // Region tints: GeoJSON fill so each area has a visible color (Mapbox "within" doesn't work for building polygons).
+  if (!map.getSource("toronto-regions")) {
+    const regionFeatures: GeoJSON.Feature<GeoJSON.Polygon>[] = REGIONS.map(
+      (r) => ({
+        type: "Feature",
+        properties: { color: r.color, name: r.name },
+        geometry: r.polygon,
+      })
+    );
+    map.addSource("toronto-regions", {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: regionFeatures },
+    });
+  }
+  map.addLayer(
+    {
+      id: "toronto-regions-fill",
+      type: "fill",
+      source: "toronto-regions",
+      paint: {
+        "fill-color": ["get", "color"],
+        "fill-opacity": 0.7,
+        "fill-outline-color": "#020617",
+      },
+    },
+    beforeId
+  );
+
   map.addLayer(
     {
       id: "add-3d-buildings",
@@ -261,28 +406,7 @@ function setup3D(
       filter: ["==", "extrude", "true"],
       type: "fill-extrusion",
       minzoom: 14,
-      paint: {
-        "fill-extrusion-color": buildingColorExpression(buildingColors),
-        "fill-extrusion-height": [
-          "interpolate",
-          ["linear"],
-          ["zoom"],
-          14,
-          0,
-          14.05,
-          ["get", "height"],
-        ],
-        "fill-extrusion-base": [
-          "interpolate",
-          ["linear"],
-          ["zoom"],
-          14,
-          0,
-          14.05,
-          ["get", "min_height"],
-        ],
-        "fill-extrusion-opacity": 0.9,
-      },
+      paint: buildingExtrusionPaint(buildingColorExpression(buildingColors)),
     },
     beforeId
   );
