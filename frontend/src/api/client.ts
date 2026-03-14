@@ -132,6 +132,20 @@ export class ApiClient {
     );
   }
 
+  /** Create a follower with a custom avatar (e.g. user joining the simulation). */
+  createFollower(
+    sessionId: string,
+    body: { name: string; avatar_params: Record<string, unknown> },
+  ): Promise<FollowerResponse> {
+    return this.request<FollowerResponse>(
+      `/api/sessions/${sessionId}/followers`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    );
+  }
+
   // ── Archetypes ──
 
   getArchetypes(sessionId: string): Promise<ArchetypeListResponse> {

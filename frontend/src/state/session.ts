@@ -9,6 +9,7 @@ import type {
   LngLat,
 } from "../api/types.js";
 import type { MapFollower } from "../world/toronto-mapbox.js";
+import { resolveAvatar } from "../avatar/resolveAvatar.js";
 
 /** Convert backend [lat, lng] to Mapbox [lng, lat]. */
 export function toMapbox(backendPos: [number, number] | null): LngLat | null {
@@ -17,12 +18,14 @@ export function toMapbox(backendPos: [number, number] | null): LngLat | null {
 }
 
 function toMapFollower(f: FollowerResponse): MapFollower {
+  const avatar = resolveAvatar(f.avatar_seed ?? null, f.avatar_params ?? null);
   return {
     follower_id: f.follower_id,
     archetype_id: f.archetype_id,
     name: f.name,
     position: toMapbox(f.position),
     happiness: f.happiness,
+    avatar: avatar ?? undefined,
   };
 }
 
@@ -210,6 +213,40 @@ export class SessionController {
     } catch (err) {
       this.cb.onError(err instanceof Error ? err : new Error(String(err)));
     }
+  }
+
+  /** Create a follower with custom avatar and refresh list. */
+  async createFollowerWithAvatar(
+    name: string,
+    avatarParams: {
+      skinTone: number;
+      bodyType: string;
+      hairTexture: string;
+      hairStyle: string;
+      hairColor: string;
+      outfit: string;
+      outfitColor: string;
+      accessories: string[];
+    },
+  ): Promise<void> {
+    if (!this.session) return;
+    const res = await this.api.createFollower(this.session.session_id, {
+      name,
+      avatar_params: {
+        skin_tone: avatarParams.skinTone,
+        body_type: avatarParams.bodyType,
+        hair_texture: avatarParams.hairTexture,
+        hair_style: avatarParams.hairStyle,
+        hair_color: avatarParams.hairColor,
+        outfit: avatarParams.outfit,
+        outfit_color: avatarParams.outfitColor,
+        accessories: avatarParams.accessories,
+      },
+    });
+    this.cb.onLog(`Joined as "${res.name}" (follower #${res.follower_id})`);
+    const followerRes = await this.api.getFollowers(this.session.session_id, 0, 200);
+    this.followers = followerRes.followers.map(toMapFollower);
+    this.cb.onFollowersUpdate(this.followers);
   }
 
   async disconnect(): Promise<void> {
