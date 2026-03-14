@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Alexandria:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
     <link
@@ -28,6 +28,7 @@
         --primary-foreground: #09090b;
         --radius: 0.625rem;
         --font-sans: "Inter", system-ui, sans-serif;
+        --font-heading: "Alexandria", var(--font-sans);
         --font-mono: "Geist Mono", ui-monospace, monospace;
       }
       * {
@@ -44,6 +45,9 @@
         color: var(--foreground);
         background: var(--background);
         -webkit-font-smoothing: antialiased;
+      }
+      h1, h2, h3, h4, h5, h6 {
+        font-family: var(--font-heading);
       }
       #canvas-container {
         position: fixed;
@@ -78,6 +82,7 @@
         gap: 0.5rem;
       }
       .hud-title {
+        font-family: var(--font-heading);
         font-size: 0.9375rem;
         font-weight: 600;
         letter-spacing: -0.02em;
@@ -142,7 +147,7 @@
         padding: 0.5rem 0;
       }
       .time-day {
-        font-family: var(--font-mono);
+        font-family: var(--font-heading);
         font-size: 1.25rem;
         font-weight: 600;
         letter-spacing: -0.02em;
@@ -160,7 +165,7 @@
         gap: 0.75rem;
       }
       .stat-pill {
-        font-family: var(--font-mono);
+        font-family: var(--font-heading);
         font-size: 0.7rem;
         padding: 0.25rem 0.5rem;
         background: var(--card);
@@ -196,6 +201,7 @@
         transform: translateY(0);
       }
       #events-sheet h2 {
+        font-family: var(--font-heading);
         font-size: 0.7rem;
         font-weight: 600;
         text-transform: uppercase;
@@ -248,6 +254,7 @@
         pointer-events: auto;
       }
       #tweet-panel h2 {
+        font-family: var(--font-heading);
         font-size: 0.7rem;
         font-weight: 600;
         text-transform: uppercase;
@@ -261,6 +268,7 @@
         font-size: 0.7rem;
       }
       .tweet-author {
+        font-family: var(--font-heading);
         font-weight: 600;
         color: var(--foreground);
         display: block;
@@ -296,6 +304,7 @@
         transform: translateY(0);
       }
       #avatar-sheet h2 {
+        font-family: var(--font-heading);
         font-size: 0.7rem;
         font-weight: 600;
         text-transform: uppercase;
@@ -360,6 +369,7 @@
         max-width: 420px;
       }
       .welcome-title {
+        font-family: var(--font-heading);
         font-size: clamp(1.75rem, 5vw, 2.5rem);
         font-weight: 700;
         letter-spacing: -0.03em;
@@ -368,12 +378,14 @@
         line-height: 1.15;
       }
       .welcome-tagline {
+        font-family: var(--font-sans);
         font-size: 1rem;
         color: var(--muted-foreground);
         margin: 0 0 2rem 0;
         line-height: 1.5;
       }
       .welcome-features {
+        font-family: var(--font-sans);
         text-align: left;
         font-size: 0.8125rem;
         color: var(--muted-foreground);
