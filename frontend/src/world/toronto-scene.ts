@@ -80,9 +80,10 @@ export class TorontoScene {
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.05;
     this.controls.minDistance = 40;
-    this.controls.maxDistance = 400;
+    this.controls.maxDistance = 200;
     this.controls.maxPolarAngle = Math.PI / 2 - 0.1;
     this.controls.target.set(0, 15, 0);
+    this.controls.maxTargetRadius = 80;
 
     this.ambientLight = new THREE.AmbientLight(0x6699bb, 0.35);
     this.scene.add(this.ambientLight);
