@@ -364,6 +364,10 @@ export class TorontoMapboxScene {
   private animationId: number = 0;
   private currentStyle: "light" | "dark" = "light";
   private readonly buildingColors: BuildingColorPalette;
+  private userInteracting: boolean = false;
+  private dragPos: { x: number; y: number } | null = null;
+  private onMouseMove: ((e: MouseEvent) => void) | null = null;
+  private onMouseUp: (() => void) | null = null;
 
   constructor(options: TorontoMapboxOptions) {
     const { container, buildingColors } = options;
@@ -402,6 +406,38 @@ export class TorontoMapboxScene {
 
     this.map.addControl(new GentleZoomControl(), "bottom-right");
 
+    // Manual drag-to-pan: bypass whatever is blocking Mapbox's internal dragPan.
+    container.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      // Don't intercept clicks on Mapbox controls (zoom buttons, etc.)
+      if ((e.target as HTMLElement).closest(".mapboxgl-ctrl")) return;
+      this.dragPos = { x: e.clientX, y: e.clientY };
+      this.userInteracting = true;
+      container.style.cursor = "grabbing";
+    });
+
+    this.onMouseMove = (e: MouseEvent) => {
+      if (!this.dragPos || !this.map) return;
+      const dx = e.clientX - this.dragPos.x;
+      const dy = e.clientY - this.dragPos.y;
+      this.map.panBy([-dx, -dy], { duration: 0 });
+      this.dragPos = { x: e.clientX, y: e.clientY };
+    };
+
+    this.onMouseUp = () => {
+      if (!this.dragPos) return;
+      this.dragPos = null;
+      this.userInteracting = false;
+      container.style.cursor = "";
+    };
+
+    window.addEventListener("mousemove", this.onMouseMove);
+    window.addEventListener("mouseup", this.onMouseUp);
+
+    // Pause day-cycle animation while the user is dragging/rotating
+    this.map.on("rotatestart", () => { this.userInteracting = true; });
+    this.map.on("rotateend", () => { this.userInteracting = false; });
+
     this.map.on("load", () => {
       if (!this.map) return;
       // Enforce zoom limits after load so scroll wheel also respects them
@@ -425,14 +461,16 @@ export class TorontoMapboxScene {
     const isNight = timeOfDay < 0.25 || timeOfDay > 0.75;
     const mode = isNight ? "dark" : "light";
 
-    // Soft camera motion over the day (slight pitch + bearing drift, Cities: Skylines‑style).
-    const basePitch = 40;
-    const pitchWobble = Math.cos(timeOfDay * Math.PI * 2) * 3;
-    this.map.setPitch(basePitch + pitchWobble);
+    // Soft camera motion over the day — paused while the user is dragging/rotating.
+    if (!this.userInteracting) {
+      const basePitch = 40;
+      const pitchWobble = Math.cos(timeOfDay * Math.PI * 2) * 3;
+      this.map.setPitch(basePitch + pitchWobble);
 
-    const baseBearing = -20;
-    const bearingDrift = Math.sin(timeOfDay * Math.PI * 2) * 6;
-    this.map.setBearing(baseBearing + bearingDrift);
+      const baseBearing = -20;
+      const bearingDrift = Math.sin(timeOfDay * Math.PI * 2) * 6;
+      this.map.setBearing(baseBearing + bearingDrift);
+    }
 
     // Atmospheric fog for day/night mood.
     if (this.currentStyle !== mode) {
@@ -475,6 +513,8 @@ export class TorontoMapboxScene {
 
   dispose(): void {
     cancelAnimationFrame(this.animationId);
+    if (this.onMouseMove) window.removeEventListener("mousemove", this.onMouseMove);
+    if (this.onMouseUp) window.removeEventListener("mouseup", this.onMouseUp);
     if (this.map) {
       this.map.remove();
       this.map = null;
