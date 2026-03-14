@@ -72,7 +72,7 @@ class GentleZoomControl {
   private zoom(direction: 1 | -1): void {
     if (!this.map) return;
     const current = this.map.getZoom();
-    const next = Math.min(22, Math.max(12, current + direction * ZOOM_DELTA));
+    const next = Math.min(18, Math.max(13, current + direction * ZOOM_DELTA));
     this.map.easeTo({ zoom: next, duration: 320 });
   }
 
@@ -384,21 +384,32 @@ export class TorontoMapboxScene {
     this.map = new mapboxgl.Map({
       container,
       accessToken: token,
-      // Mapbox Standard (vector) for a clean, modern base map.
       style: "mapbox://styles/mapbox/standard",
       center: TORONTO_CENTER,
-      zoom: 15.5,
-      minZoom: 12,
-      pitch: 60,
+      zoom: 14,
+      minZoom: 13,
+      maxZoom: 18,
+      pitch: 40,
+      maxPitch: 60,
       bearing: -20,
       antialias: true,
+      // Constrains the map center — tight box around downtown Toronto
       maxBounds: [
-        [-79.65, 43.55], // SW corner (lng, lat)
-        [-79.10, 43.75], // NE corner (lng, lat)
+        [-79.52, 43.60], // SW: roughly Etobicoke / lakeshore
+        [-79.25, 43.72], // NE: roughly Don Valley / north of Bloor
       ],
     });
 
     this.map.addControl(new GentleZoomControl(), "bottom-right");
+
+    this.map.on("load", () => {
+      if (!this.map) return;
+      // Enforce zoom limits after load so scroll wheel also respects them
+      this.map.setMinZoom(13);
+      this.map.setMaxZoom(18);
+      setup3D(this.map, this.buildingColors);
+      setupFollowerLayer(this.map, []);
+    });
 
     this.map.on("style.load", () => {
       if (this.map) {
@@ -415,8 +426,8 @@ export class TorontoMapboxScene {
     const mode = isNight ? "dark" : "light";
 
     // Soft camera motion over the day (slight pitch + bearing drift, Cities: Skylines‑style).
-    const basePitch = 60;
-    const pitchWobble = Math.cos(timeOfDay * Math.PI * 2) * 4;
+    const basePitch = 40;
+    const pitchWobble = Math.cos(timeOfDay * Math.PI * 2) * 3;
     this.map.setPitch(basePitch + pitchWobble);
 
     const baseBearing = -20;
