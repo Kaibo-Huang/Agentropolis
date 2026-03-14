@@ -4,7 +4,7 @@
  */
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import type { CityState } from "../types/city-state.js";
+import type { CityState } from "agentropolis";
 
 // More realistic, colorful palette
 const BUILDING_MATERIALS: Array<{ color: number; metalness: number; roughness: number; isGlass?: boolean }> = [
@@ -464,3 +464,4 @@ export class TorontoScene {
     this.envMap?.dispose();
   }
 }
+
