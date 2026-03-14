@@ -352,6 +352,7 @@ function setup3D(
       id: "toronto-regions-fill",
       type: "fill",
       source: "toronto-regions",
+      slot: "middle",
       paint: {
         "fill-color": ["get", "color"],
         "fill-opacity": 0.7,
@@ -369,6 +370,7 @@ function setup3D(
       filter: ["==", "extrude", "true"],
       type: "fill-extrusion",
       minzoom: 14,
+      slot: "middle",
       paint: buildingExtrusionPaint(buildingColorExpression(buildingColors)),
     },
     beforeId
@@ -384,6 +386,9 @@ export class TorontoMapboxScene {
   private dragPos: { x: number; y: number } | null = null;
   private onMouseMove: ((e: MouseEvent) => void) | null = null;
   private onMouseUp: (() => void) | null = null;
+  private _lastPitch: number = 40;
+  private _lastBearing: number = -20;
+  private _lastFollowers: MapFollower[] | null = null;
 
   constructor(options: TorontoMapboxOptions) {
     const { container, buildingColors } = options;
@@ -481,11 +486,20 @@ export class TorontoMapboxScene {
     if (!this.userInteracting) {
       const basePitch = 40;
       const pitchWobble = Math.cos(timeOfDay * Math.PI * 2) * 3;
-      this.map.setPitch(basePitch + pitchWobble);
+      const targetPitch = basePitch + pitchWobble;
 
       const baseBearing = -20;
       const bearingDrift = Math.sin(timeOfDay * Math.PI * 2) * 6;
-      this.map.setBearing(baseBearing + bearingDrift);
+      const targetBearing = baseBearing + bearingDrift;
+
+      // Only update when values change meaningfully (avoids forcing Mapbox re-render)
+      if (Math.abs(targetPitch - this._lastPitch) > 0.05 ||
+          Math.abs(targetBearing - this._lastBearing) > 0.05) {
+        this.map.setPitch(targetPitch);
+        this.map.setBearing(targetBearing);
+        this._lastPitch = targetPitch;
+        this._lastBearing = targetBearing;
+      }
     }
 
     // Atmospheric fog for day/night mood.
@@ -513,6 +527,9 @@ export class TorontoMapboxScene {
 
   setFollowers(followers: MapFollower[]): void {
     if (!this.map) return;
+    // Skip rebuild if same reference (no change)
+    if (followers === this._lastFollowers) return;
+    this._lastFollowers = followers;
     const source = this.map.getSource("followers");
     if (source && "setData" in source) {
       (source as mapboxgl.GeoJSONSource).setData(buildFollowerGeoJSON(followers));

@@ -33,9 +33,17 @@ function log(msg: string) {
 function renderLog() {
   const el = document.getElementById("log");
   if (!el) return;
-  el.innerHTML = logEntries
-    .map((e) => `<div class="log-entry">${escapeHtml(e)}</div>`)
-    .join("");
+  // Prepend newest entry instead of rebuilding entire DOM
+  const newest = logEntries[0];
+  if (!newest) return;
+  const div = document.createElement("div");
+  div.className = "log-entry";
+  div.textContent = newest;
+  el.insertBefore(div, el.firstChild);
+  // Trim excess entries from DOM
+  while (el.children.length > maxLogEntries) {
+    el.removeChild(el.lastChild!);
+  }
 }
 
 function escapeHtml(s: string): string {
@@ -106,17 +114,23 @@ function renderSessionInfo(session: SessionResponse) {
 function renderTweets(posts: PostResponse[]) {
   const container = document.getElementById("tweets-list");
   if (!container) return;
-  container.innerHTML = posts
-    .slice(0, 20)
-    .map(
-      (p) =>
-        `<div class="tweet">
-       <span class="tweet-author">Follower #${p.follower_id}</span>
-       <span class="tweet-text">${escapeHtml(p.text)}</span>
-       <span class="tweet-time">${new Date(p.virtual_time).toLocaleTimeString()}</span>
-     </div>`,
-    )
-    .join("");
+  // Clear and rebuild with DOM nodes (avoids innerHTML reparse)
+  container.textContent = "";
+  for (const p of posts.slice(0, 20)) {
+    const div = document.createElement("div");
+    div.className = "tweet";
+    const author = document.createElement("span");
+    author.className = "tweet-author";
+    author.textContent = `Follower #${p.follower_id}`;
+    const text = document.createElement("span");
+    text.className = "tweet-text";
+    text.textContent = p.text;
+    const time = document.createElement("span");
+    time.className = "tweet-time";
+    time.textContent = new Date(p.virtual_time).toLocaleTimeString();
+    div.append(author, text, time);
+    container.appendChild(div);
+  }
 }
 
 function updateButtonStates(phase: ControllerPhase) {

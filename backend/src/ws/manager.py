@@ -48,14 +48,20 @@ class ConnectionManager:
         async with self._lock:
             connections = list(self._connections.get(session_id, []))
 
-        dead: list[WebSocket] = []
-        for ws in connections:
-            try:
-                await ws.send_json(message)
-            except Exception:
-                dead.append(ws)
+        if not connections:
+            return
 
-        # Clean up dead connections without holding the lock during sends
+        async def _send(ws: WebSocket) -> bool:
+            try:
+                await asyncio.wait_for(ws.send_json(message), timeout=5.0)
+                return True
+            except Exception:
+                return False
+
+        results = await asyncio.gather(*[_send(ws) for ws in connections])
+
+        # Clean up dead connections
+        dead = [ws for ws, ok in zip(connections, results) if not ok]
         if dead:
             async with self._lock:
                 for ws in dead:

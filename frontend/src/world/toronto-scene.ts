@@ -54,6 +54,8 @@ export class TorontoScene {
   private pedestrians: Pedestrian[] = [];
   private pedestrianPaths: THREE.Vector3[][] = [];
   private envMap: THREE.Texture | null = null;
+  private _resizeHandler: (() => void) | null = null;
+  private _resizeRaf: number = 0;
 
   constructor(options: TorontoSceneOptions) {
     const { canvas } = options;
@@ -91,7 +93,7 @@ export class TorontoScene {
     this.sunLight = new THREE.DirectionalLight(0xfff5e6, 0.95);
     this.sunLight.position.set(80, 120, 60);
     this.sunLight.castShadow = true;
-    this.sunLight.shadow.mapSize.set(2048, 2048);
+    this.sunLight.shadow.mapSize.set(1024, 1024);
     this.sunLight.shadow.camera.near = 0.5;
     this.sunLight.shadow.camera.far = 400;
     this.sunLight.shadow.camera.left = -120;
@@ -109,7 +111,14 @@ export class TorontoScene {
     this.createPedestrians();
 
     this.resize();
-    window.addEventListener("resize", () => this.resize());
+    this._resizeHandler = () => {
+      if (this._resizeRaf) return;
+      this._resizeRaf = requestAnimationFrame(() => {
+        this._resizeRaf = 0;
+        this.resize();
+      });
+    };
+    window.addEventListener("resize", this._resizeHandler);
   }
 
   private setupEnvironment(): void {
@@ -153,50 +162,84 @@ export class TorontoScene {
     const blockW = spacing - streetW;
     const base = -spacing * 2;
 
+    // Collect transformed geometries by type, then merge into single meshes
+    const streetGeoms: THREE.BufferGeometry[] = [];
+    const sidewalkGeoms: THREE.BufferGeometry[] = [];
+    const grassGeoms: THREE.BufferGeometry[] = [];
+
     for (let row = 0; row <= 6; row++) {
       for (let col = 0; col <= 6; col++) {
         const x = base + col * spacing;
         const z = base + row * spacing;
         const isStreet = row === 3 || col === 3;
+
         if (isStreet) {
-          const streetGeo = new THREE.PlaneGeometry(blockW + streetW, blockW + streetW);
-          const streetMat = new THREE.MeshStandardMaterial({
-            color: STREET_COLOR,
-            roughness: 0.95,
-            metalness: 0,
-          });
-          const street = new THREE.Mesh(streetGeo, streetMat);
-          street.rotation.x = -Math.PI / 2;
-          street.position.set(x, 0.01, z);
-          street.receiveShadow = true;
-          this.scene.add(street);
+          const geo = new THREE.PlaneGeometry(blockW + streetW, blockW + streetW);
+          geo.rotateX(-Math.PI / 2);
+          geo.translate(x, 0.01, z);
+          streetGeoms.push(geo);
         } else {
-          const sidewalkGeo = new THREE.PlaneGeometry(blockW, blockW);
-          const sidewalkMat = new THREE.MeshStandardMaterial({
-            color: SIDEWALK_COLOR,
-            roughness: 0.9,
-            metalness: 0,
-          });
-          const sidewalk = new THREE.Mesh(sidewalkGeo, sidewalkMat);
-          sidewalk.rotation.x = -Math.PI / 2;
-          sidewalk.position.set(x, 0.02, z);
-          sidewalk.receiveShadow = true;
-          this.scene.add(sidewalk);
+          const geo = new THREE.PlaneGeometry(blockW, blockW);
+          geo.rotateX(-Math.PI / 2);
+          geo.translate(x, 0.02, z);
+          sidewalkGeoms.push(geo);
           if ((row + col) % 3 === 0) {
-            const grassGeo = new THREE.PlaneGeometry(blockW - 4, blockW - 4);
-            const grassMat = new THREE.MeshStandardMaterial({
-              color: GRASS_COLOR,
-              roughness: 0.98,
-              metalness: 0,
-            });
-            const grass = new THREE.Mesh(grassGeo, grassMat);
-            grass.rotation.x = -Math.PI / 2;
-            grass.position.set(x, 0.03, z);
-            this.scene.add(grass);
+            const gGeo = new THREE.PlaneGeometry(blockW - 4, blockW - 4);
+            gGeo.rotateX(-Math.PI / 2);
+            gGeo.translate(x, 0.03, z);
+            grassGeoms.push(gGeo);
           }
         }
       }
     }
+
+    const mergeAndAdd = (geoms: THREE.BufferGeometry[], color: number) => {
+      if (geoms.length === 0) return;
+      const merged = this.mergeBufferGeometries(geoms);
+      const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.95, metalness: 0 });
+      const mesh = new THREE.Mesh(merged, mat);
+      mesh.receiveShadow = true;
+      this.scene.add(mesh);
+      // Dispose individual geometries
+      for (const g of geoms) g.dispose();
+    };
+
+    mergeAndAdd(streetGeoms, STREET_COLOR);
+    mergeAndAdd(sidewalkGeoms, SIDEWALK_COLOR);
+    mergeAndAdd(grassGeoms, GRASS_COLOR);
+  }
+
+  /** Merge an array of BufferGeometries into one (simple case: position + normal + index). */
+  private mergeBufferGeometries(geoms: THREE.BufferGeometry[]): THREE.BufferGeometry {
+    let totalVerts = 0;
+    let totalIdx = 0;
+    for (const g of geoms) {
+      totalVerts += g.getAttribute("position").count;
+      totalIdx += g.index ? g.index.count : 0;
+    }
+    const pos = new Float32Array(totalVerts * 3);
+    const norm = new Float32Array(totalVerts * 3);
+    const idx = new Uint32Array(totalIdx);
+    let vOff = 0;
+    let iOff = 0;
+    for (const g of geoms) {
+      const p = g.getAttribute("position");
+      const n = g.getAttribute("normal");
+      pos.set(new Float32Array(p.array.buffer, p.array.byteOffset, p.count * 3), vOff * 3);
+      norm.set(new Float32Array(n.array.buffer, n.array.byteOffset, n.count * 3), vOff * 3);
+      if (g.index) {
+        for (let j = 0; j < g.index.count; j++) {
+          idx[iOff + j] = g.index.array[j] + vOff;
+        }
+        iOff += g.index.count;
+      }
+      vOff += p.count;
+    }
+    const merged = new THREE.BufferGeometry();
+    merged.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    merged.setAttribute("normal", new THREE.BufferAttribute(norm, 3));
+    merged.setIndex(new THREE.BufferAttribute(idx, 1));
+    return merged;
   }
 
   private createCNTower(): THREE.Group {
@@ -302,13 +345,16 @@ export class TorontoScene {
       this.scene.add(building);
       this.buildings.push(building);
 
-      const light = new THREE.PointLight(0xffeedd, 0.5, 18);
-      light.position.copy(building.position);
-      light.position.y += h * 0.35 + seed(i + 200) * 5;
-      light.position.x += (seed(i + 300) - 0.5) * 4;
-      light.position.z += (seed(i + 400) - 0.5) * 4;
-      this.scene.add(light);
-      this.buildingLights.push(light);
+      // Only add point lights for a subset of buildings to reduce per-fragment cost
+      if (i % 3 === 0) {
+        const light = new THREE.PointLight(0xffeedd, 0.7, 24);
+        light.position.copy(building.position);
+        light.position.y += h * 0.35 + seed(i + 200) * 5;
+        light.position.x += (seed(i + 300) - 0.5) * 4;
+        light.position.z += (seed(i + 400) - 0.5) * 4;
+        this.scene.add(light);
+        this.buildingLights.push(light);
+      }
     }
   }
 
@@ -437,11 +483,9 @@ export class TorontoScene {
     });
 
     const pollutionNorm = state.pollution / 100;
-    const fogNear = 60 + pollutionNorm * 80;
-    const fogFar = 250 + pollutionNorm * 150;
-    const fogColor = new THREE.Color();
-    fogColor.setHSL(0.55, 0.1, 0.4 + pollutionNorm * 0.25);
-    this.scene.fog = new THREE.Fog(fogColor, fogNear, fogFar);
+    this.fog.near = 60 + pollutionNorm * 80;
+    this.fog.far = 250 + pollutionNorm * 150;
+    this.fog.color.setHSL(0.55, 0.1, 0.4 + pollutionNorm * 0.25);
   }
 
   startRenderLoop(getState: () => { state: Readonly<CityState>; day: number }): void {
@@ -459,8 +503,28 @@ export class TorontoScene {
 
   dispose(): void {
     cancelAnimationFrame(this.animationId);
-    window.removeEventListener("resize", () => this.resize());
+    if (this._resizeHandler) {
+      window.removeEventListener("resize", this._resizeHandler);
+      this._resizeHandler = null;
+    }
+    if (this._resizeRaf) {
+      cancelAnimationFrame(this._resizeRaf);
+      this._resizeRaf = 0;
+    }
     this.controls.dispose();
+
+    // Dispose all geometries and materials in the scene
+    this.scene.traverse((obj: THREE.Object3D) => {
+      if (obj instanceof THREE.Mesh) {
+        obj.geometry?.dispose();
+        if (Array.isArray(obj.material)) {
+          obj.material.forEach((m: THREE.Material) => m.dispose());
+        } else {
+          obj.material?.dispose();
+        }
+      }
+    });
+
     this.renderer.dispose();
     this.envMap?.dispose();
   }
