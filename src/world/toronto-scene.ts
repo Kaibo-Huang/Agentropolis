@@ -393,8 +393,8 @@ export class TorontoScene {
       p.t += p.speed * delta * 0.5;
       if (p.t >= len) p.t -= len;
       if (p.t < 0) p.t += len;
-      const i0 = Math.floor(p.t) % p.path.length;
-      const i1 = (i0 + 1) % p.path.length;
+      const i0 = Math.min(Math.floor(p.t), p.path.length - 2);
+      const i1 = i0 + 1;
       const a = p.t - Math.floor(p.t);
       p.group.position.lerpVectors(p.path[i0], p.path[i1], a);
       p.group.lookAt(p.path[i1].x, p.group.position.y, p.path[i1].z);
