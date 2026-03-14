@@ -364,28 +364,43 @@ function skinToneToHex(t: number): string {
   return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
 }
 
-/** Build popup HTML for a follower (all MapFollower info). */
+/** Build popup HTML for a follower as a profile card. */
 function buildFollowerPopupHTML(f: MapFollower): string {
-  const coord = f.position ? `${f.position[1].toFixed(5)}, ${f.position[0].toFixed(5)}` : "—";
-  const rows: string[] = [
-    `<tr><td class="popup-label">ID</td><td>${f.follower_id}</td></tr>`,
-    `<tr><td class="popup-label">Archetype</td><td>${f.archetype_id}</td></tr>`,
-    `<tr><td class="popup-label">Happiness</td><td>${Math.round(f.happiness * 100)}%</td></tr>`,
-    `<tr><td class="popup-label">Position</td><td>${coord}</td></tr>`,
-  ];
-  if (f.avatar) {
-    rows.push(
-      `<tr><td class="popup-label">Skin tone</td><td>${f.avatar.skinTone.toFixed(2)}</td></tr>`,
-      `<tr><td class="popup-label">Body</td><td>${escapeHtml(f.avatar.bodyType)}</td></tr>`,
-      `<tr><td class="popup-label">Hair</td><td>${escapeHtml(f.avatar.hairTexture)} / ${escapeHtml(f.avatar.hairStyle)} / ${escapeHtml(f.avatar.hairColor)}</td></tr>`,
-      `<tr><td class="popup-label">Outfit</td><td>${escapeHtml(f.avatar.outfit)} (${escapeHtml(f.avatar.outfitColor)})</td></tr>`,
-      `<tr><td class="popup-label">Accessories</td><td>${f.avatar.accessories.length ? f.avatar.accessories.map(escapeHtml).join(", ") : "—"}</td></tr>`
-    );
-  }
+  const happinessPct = Math.round(f.happiness * 100);
+  const color = f.avatar?.outfitColor ?? getArchetypeColor(f.archetype_id);
+  const appearance =
+    f.avatar
+      ? [
+          escapeHtml(f.avatar.bodyType),
+          `${escapeHtml(f.avatar.hairStyle)} · ${escapeHtml(f.avatar.hairColor)}`,
+          `${escapeHtml(f.avatar.outfit)}`,
+          f.avatar.accessories.length
+            ? f.avatar.accessories.map(escapeHtml).join(", ")
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" · ")
+      : "";
+
   return `
-    <div class="follower-popup">
-      <div class="follower-popup-name">${escapeHtml(f.name)}</div>
-      <table class="follower-popup-table"><tbody>${rows.join("")}</tbody></table>
+    <div class="profile-card">
+      <header class="profile-card-header">
+        <div class="profile-card-avatar" style="background-color:${escapeHtml(color)}"></div>
+        <div class="profile-card-title">
+          <span class="profile-card-name">${escapeHtml(f.name)}</span>
+          <span class="profile-card-meta">Archetype ${f.archetype_id}</span>
+        </div>
+      </header>
+      <div class="profile-card-body">
+        <div class="profile-card-row">
+          <span class="profile-card-label">Mood</span>
+          <div class="profile-card-happiness">
+            <div class="profile-card-happiness-bar" style="width:${happinessPct}%"></div>
+            <span class="profile-card-happiness-text">${happinessPct}%</span>
+          </div>
+        </div>
+        ${appearance ? `<div class="profile-card-row profile-card-appearance"><span class="profile-card-label">Look</span><span>${appearance}</span></div>` : ""}
+      </div>
     </div>`;
 }
 
@@ -660,7 +675,7 @@ export class TorontoMapboxScene {
       closeOnClick: false,
       className: "follower-popup-container",
       anchor: "bottom",
-      offset: [0, -12],
+      offset: [0, 500],
     });
 
     const CLICK_MOVE_THRESHOLD_PX = 6;

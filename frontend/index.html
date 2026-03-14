@@ -49,45 +49,104 @@
       h1, h2, h3, h4, h5, h6 {
         font-family: var(--font-heading);
       }
-      /* Follower popup (Mapbox) */
+      /* Follower popup – profile card above the dot */
       .follower-popup-container .mapboxgl-popup-content {
         padding: 0;
         background: var(--card);
         border: 1px solid var(--border);
         border-radius: var(--radius);
-        box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-        min-width: 12rem;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.06);
+        min-width: 14rem;
+        max-width: 20rem;
+        overflow: hidden;
       }
       .follower-popup-container .mapboxgl-popup-tip {
-        border-top-color: var(--card);
+        display: none;
       }
-      .follower-popup {
-        padding: 0.75rem 1rem;
+      .profile-card {
         font-family: var(--font-sans);
         font-size: 0.8125rem;
         color: var(--card-foreground);
       }
-      .follower-popup-name {
+      .profile-card-header {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 1rem 1rem 0.75rem;
+      }
+      .profile-card-avatar {
+        width: 2.75rem;
+        height: 2.75rem;
+        border-radius: 50%;
+        flex-shrink: 0;
+        border: 2px solid var(--border);
+      }
+      .profile-card-title {
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+        min-width: 0;
+      }
+      .profile-card-name {
         font-family: var(--font-heading);
         font-weight: 600;
-        font-size: 1rem;
-        margin-bottom: 0.5rem;
+        font-size: 1.0625rem;
         color: var(--foreground);
+        line-height: 1.2;
       }
-      .follower-popup-table {
-        width: 100%;
-        border-collapse: collapse;
+      .profile-card-meta {
         font-size: 0.75rem;
-      }
-      .follower-popup-table td {
-        padding: 0.2rem 0.25rem 0.2rem 0;
-        vertical-align: top;
-      }
-      .follower-popup-table .popup-label {
         color: var(--muted-foreground);
-        font-weight: 500;
-        white-space: nowrap;
-        padding-right: 0.5rem;
+      }
+      .profile-card-body {
+        padding: 0.5rem 1rem 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+      .profile-card-row {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+      }
+      .profile-card-label {
+        font-size: 0.6875rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--muted-foreground);
+      }
+      .profile-card-happiness {
+        position: relative;
+        height: 1.25rem;
+        background: var(--border);
+        border-radius: 999px;
+        overflow: hidden;
+      }
+      .profile-card-happiness-bar {
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #22c55e, #84cc16);
+        transition: width 0.2s ease;
+      }
+      .profile-card-happiness-text {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.7rem;
+        font-weight: 600;
+        color: var(--foreground);
+        text-shadow: 0 0 1px var(--card);
+      }
+      .profile-card-appearance span:not(.profile-card-label) {
+        font-size: 0.75rem;
+        color: var(--muted-foreground);
+        line-height: 1.4;
       }
       #canvas-container {
         position: fixed;
