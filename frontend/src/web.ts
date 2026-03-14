@@ -96,6 +96,8 @@ torontoScene.startRenderLoop(() => controller.getHourOfDay());
 
 // ── UI Rendering ──
 
+const TORONTO_TZ = "America/Toronto";
+
 function renderSessionInfo(session: SessionResponse) {
   const dayEl = document.getElementById("day-display");
   if (dayEl) {
@@ -106,7 +108,7 @@ function renderSessionInfo(session: SessionResponse) {
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
-      timeZone: "UTC",
+      timeZone: TORONTO_TZ,
     });
   }
 }
@@ -127,7 +129,12 @@ function renderTweets(posts: PostResponse[]) {
     text.textContent = p.text;
     const time = document.createElement("span");
     time.className = "tweet-time";
-    time.textContent = new Date(p.virtual_time).toLocaleTimeString();
+    time.textContent = new Date(p.virtual_time).toLocaleTimeString("en-CA", {
+      timeZone: TORONTO_TZ,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
     div.append(author, text, time);
     container.appendChild(div);
   }

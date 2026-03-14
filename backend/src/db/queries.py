@@ -10,6 +10,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,9 +41,11 @@ async def get_session(db: AsyncSession, session_id: uuid.UUID) -> Session | None
     return result.scalar_one_or_none()
 
 
-def _now_utc_hour() -> datetime:
-    from datetime import timezone
-    now = datetime.now(timezone.utc)
+TORONTO_TZ = ZoneInfo("America/Toronto")
+
+
+def _now_toronto_hour() -> datetime:
+    now = datetime.now(TORONTO_TZ)
     return now.replace(minute=0, second=0, microsecond=0)
 
 
@@ -51,7 +54,7 @@ async def create_session(
     config: dict | None = None,
     virtual_time: datetime | None = None,
 ) -> Session:
-    vt = virtual_time or _now_utc_hour()
+    vt = virtual_time or _now_toronto_hour()
     session = Session(config=config, virtual_time=vt)
     db.add(session)
     await db.flush()
