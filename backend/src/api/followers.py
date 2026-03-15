@@ -53,7 +53,7 @@ class CreateFollowerRequest(BaseModel):
 async def list_followers(
     session_id: UUID,
     offset: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(500, ge=1, le=5000),
     db: AsyncSession = Depends(get_db),
 ):
     session = await queries.get_session(db, session_id)

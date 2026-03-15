@@ -18,6 +18,7 @@ import logging
 import time
 import uuid
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import railtracks as rt
 
@@ -492,6 +493,7 @@ async def _generate_follower_variations(
     """Compute follower updates with rules; call LLM only for tweet text."""
 
     # ── Rule-based happiness + position for all followers ──
+    toronto_hour = target_time.astimezone(ZoneInfo("America/Toronto")).hour
     updates = []
     for follower in followers:
         delta = compute_happiness_delta(archetype_response.actions, follower.volatility)
@@ -501,7 +503,7 @@ async def _generate_follower_variations(
             "follower_id": follower.follower_id,
             "happiness": new_happiness,
         }
-        pos = compute_position(archetype_response.actions, follower)
+        pos = compute_position(archetype_response.actions, follower, hour=toronto_hour)
         if pos:
             update["position"] = pos
         updates.append(update)

@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import random
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,6 +46,7 @@ from src.data.industry_mapping import (
     INDUSTRY_HOME_WEIGHTS,
     INDUSTRIES,
 )
+from src.agents.follower_rules import WORK_START, WORK_END
 from src.data.demographics import (
     SOCIAL_CLASSES,
     SOCIAL_CLASS_WEIGHTS_BY_REGION,
@@ -218,6 +220,13 @@ async def seed_session(
     total_population: int = max(1, int(config.get("total_population", 100)))
     archetype_count: int = max(1, int(config.get("archetype_count", 20)))
 
+    # Determine if session starts during work hours (Toronto time, not UTC)
+    if session_obj.virtual_time:
+        start_hour = session_obj.virtual_time.astimezone(ZoneInfo("America/Toronto")).hour
+    else:
+        start_hour = 12
+    is_work_hours = WORK_START <= start_hour < WORK_END
+
     # Clamp archetype_count so we don't exceed population
     archetype_count = min(archetype_count, total_population)
 
@@ -288,6 +297,16 @@ async def seed_session(
             work_pos = _random_position(work_district)
             # Deterministic avatar seed: same (session, follower) → same avatar
             avatar_seed = (hash((session_id, follower_id)) & 0x7FFFFFFF) or 1
+            # Determine initial position using same role buckets as
+            # compute_position: 15% homebodies, 15% workaholics, 70% normal
+            role_bucket = follower_id % 20
+            if role_bucket <= 2:       # homebodies — always home
+                initial_pos = home_pos
+            elif role_bucket <= 5:     # workaholics — always work
+                initial_pos = work_pos
+            else:                      # normal — depends on time of day
+                initial_pos = work_pos if is_work_hours else home_pos
+
             followers_data.append(
                 {
                     "session_id": session_id,
@@ -299,7 +318,7 @@ async def seed_session(
                     "race": _random_race(),
                     "home_position": home_pos,
                     "work_position": work_pos,
-                    "position": home_pos,
+                    "position": initial_pos,
                     "status_ailments": [],
                     "happiness": 0.5,
                     "volatility": round(random.uniform(0.1, 0.9), 4),

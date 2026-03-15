@@ -122,7 +122,7 @@ export class SessionController {
 
       // 4. Fetch initial data in parallel
       const [followerRes, archetypeRes, postRes] = await Promise.all([
-        this.api.getFollowers(this.session.session_id, 0, 200),
+        this.api.getFollowers(this.session.session_id, 0, 1000),
         this.api.getArchetypes(this.session.session_id),
         this.api.getPosts(this.session.session_id, 0, 20),
       ]);
@@ -176,7 +176,7 @@ export class SessionController {
       } else {
         const [sessionRes, followerRes, postRes] = await Promise.all([
           this.api.getSession(this.session.session_id),
-          this.api.getFollowers(this.session.session_id, 0, 200),
+          this.api.getFollowers(this.session.session_id, 0, 1000),
           this.api.getPosts(this.session.session_id, 0, 20),
         ]);
         this.session = sessionRes;
@@ -258,7 +258,7 @@ export class SessionController {
       },
     });
     this.cb.onLog(`Joined as "${res.name}" (follower #${res.follower_id})`);
-    const followerRes = await this.api.getFollowers(this.session.session_id, 0, 200);
+    const followerRes = await this.api.getFollowers(this.session.session_id, 0, 1000);
     this.followers = followerRes.followers.map(toMapFollower);
     this.cb.onFollowersUpdate(this.followers);
   }
