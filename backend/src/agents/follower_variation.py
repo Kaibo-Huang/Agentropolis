@@ -33,12 +33,48 @@ tweet_agent = rt.agent_node(
 )
 
 
+def _describe_gathering_zones(gathering_zones: list[dict], hour: int) -> str:
+    """Build a human-readable description of gathering zones and their timing status."""
+    if not gathering_zones:
+        return ""
+    lines = []
+    for gz in gathering_zones:
+        name = gz.get("zone_name", "unknown")
+        s = gz.get("start_hour", 9)
+        e = gz.get("end_hour", 16)
+        is_24_7 = (s == e)
+        if is_24_7:
+            active = True
+        elif s < e:
+            active = s <= hour < e
+        else:
+            active = hour >= s or hour < e
+
+        if active:
+            lines.append(f"  - {name}: ACTIVE NOW — crowds are gathering there")
+        else:
+            # Describe when it starts/ends
+            if s < e:
+                if hour < s:
+                    lines.append(f"  - {name}: starts at {s}:00 — people are anticipating, heading over soon")
+                else:
+                    lines.append(f"  - {name}: ended at {e}:00 — crowds dispersing, people reflecting")
+            else:  # wraps midnight
+                if hour < e:
+                    lines.append(f"  - {name}: ends at {e}:00 — still winding down")
+                else:
+                    lines.append(f"  - {name}: starts at {s}:00 — people are anticipating, making plans")
+    return "\n".join(lines)
+
+
 def build_tweet_prompt(
     archetype,
     archetype_response,
     tweeters: list,
     tweet_sentiment: str | None = None,
     event_prompts: list[str] | None = None,
+    gathering_zones: list[dict] | None = None,
+    hour: int = 12,
 ) -> str:
     """Build the tweet generation prompt.
 
@@ -70,13 +106,25 @@ def build_tweet_prompt(
     if event_prompts:
         event_lines = "\n".join(f"- {ep}" for ep in event_prompts[-5:])
         mood_line = f"City mood: {tweet_sentiment}.\n" if tweet_sentiment else ""
+
+        # Gathering zone status — tells LLM what's happening WHERE and WHEN
+        zone_block = ""
+        if gathering_zones:
+            zone_desc = _describe_gathering_zones(gathering_zones, hour)
+            zone_block = f"\nGATHERING LOCATIONS:\n{zone_desc}\n"
+
+        hour_label = f"{hour}:00" if hour >= 10 else f"0{hour}:00"
         event_block = (
-            f"\nMAJOR EVENTS IN TORONTO RIGHT NOW:\n{event_lines}\n"
+            f"\nCurrent time: {hour_label}\n"
+            f"MAJOR EVENTS IN TORONTO:\n{event_lines}\n"
+            f"{zone_block}"
             f"{mood_line}\n"
-            "Tweets MUST directly reference what's happening — be specific.\n"
+            "Tweets MUST directly reference what's happening — be specific about the event AND location.\n"
+            "If a gathering is about to start, tweet about heading there, anticipation, seeing crowds build.\n"
+            "If it's active, tweet about being there or watching the scene unfold.\n"
+            "If it ended, tweet about aftermath, what happened, what you saw.\n"
             "Each tweet should take a DIFFERENT angle: personal story, hot take, "
             "complaint, dark humor, news reaction, fear, anger, sarcasm, hope.\n"
-            "Do NOT vaguely say 'the city feels tense' — say what you actually mean.\n"
         )
 
     return (

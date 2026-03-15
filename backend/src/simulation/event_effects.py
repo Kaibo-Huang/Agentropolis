@@ -51,7 +51,7 @@ def aggregate_active_effects(events: list, current_time: datetime) -> ActiveEffe
     """
     result = ActiveEffects()
     sentiments: list[str] = []
-    zone_map: dict[str, float] = {}  # zone_name -> max pull_strength
+    zone_map: dict[str, dict] = {}  # zone_name -> {pull_strength, start_hour, end_hour}
 
     for event in events:
         # Always collect prompts for LLM world history context
@@ -102,13 +102,19 @@ def aggregate_active_effects(events: list, current_time: datetime) -> ActiveEffe
         if dtm is not None:
             result.disease_transmission_multiplier *= dtm
 
-        # gathering_zones: union, max pull_strength per zone
+        # gathering_zones: union, keep highest pull_strength per zone (with its hours)
         gz = fx.get("gathering_zones")
         if gz:
             for zone in gz:
                 name = zone.get("zone_name", "")
                 strength = zone.get("pull_strength", 0.0)
-                zone_map[name] = max(zone_map.get(name, 0.0), strength)
+                existing = zone_map.get(name)
+                if existing is None or strength > existing["pull_strength"]:
+                    zone_map[name] = {
+                        "pull_strength": strength,
+                        "start_hour": zone.get("start_hour", 9),
+                        "end_hour": zone.get("end_hour", 16),
+                    }
 
         # industry_stay_home: max per industry (list of {industry, value})
         ish = fx.get("industry_stay_home")
@@ -132,8 +138,9 @@ def aggregate_active_effects(events: list, current_time: datetime) -> ActiveEffe
     # Finalize sentiments and zones
     result.tweet_sentiment = ", ".join(sentiments) if sentiments else None
     result.gathering_zones = [
-        {"zone_name": name, "pull_strength": strength}
-        for name, strength in zone_map.items()
+        {"zone_name": name, "pull_strength": z["pull_strength"],
+         "start_hour": z["start_hour"], "end_hour": z["end_hour"]}
+        for name, z in zone_map.items()
     ]
 
     return result
