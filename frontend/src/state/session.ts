@@ -7,6 +7,9 @@ import type {
   ArchetypeResponse,
   PostResponse,
   LngLat,
+  WsFollowerUpdate,
+  WsPostUpdate,
+  WsArchetypeAction,
 } from "../api/types.js";
 import type { MapFollower } from "../world/toronto-mapbox.js";
 import { resolveAvatar } from "../avatar/resolveAvatar.js";
@@ -44,6 +47,7 @@ export interface SessionControllerCallbacks {
   onArchetypesUpdate(archetypes: ArchetypeResponse[]): void;
   onPostsUpdate(posts: PostResponse[]): void;
   onTickComplete(tick: TickResponse): void;
+  onArchetypeDecision?(archetypeId: number, actions: WsArchetypeAction[]): void;
   onError(err: Error): void;
   onLog(msg: string): void;
 }
@@ -57,6 +61,7 @@ export class SessionController {
   private posts: PostResponse[] = [];
   private autoRunTimer: ReturnType<typeof setTimeout> | null = null;
   private phase: ControllerPhase = "idle";
+  private _wsTickUpdateCount = 0;
 
   constructor(
     private apiBaseUrl: string,
@@ -155,25 +160,31 @@ export class SessionController {
       const currentVt = new Date(this.session.virtual_time);
       const targetVt = new Date(currentVt.getTime() + 3_600_000);
 
+      this._wsTickUpdateCount = 0;
       const tickResult = await this.api.tick(this.session.session_id, {
         target_time: targetVt.toISOString(),
       });
       this.cb.onTickComplete(tickResult);
 
-      // Refresh session state + followers + posts in parallel
-      const [sessionRes, followerRes, postRes] = await Promise.all([
-        this.api.getSession(this.session.session_id),
-        this.api.getFollowers(this.session.session_id, 0, 200),
-        this.api.getPosts(this.session.session_id, 0, 20),
-      ]);
-
-      this.session = sessionRes;
-      this.followers = followerRes.followers.map(toMapFollower);
-      this.posts = postRes.posts;
-
-      this.cb.onSessionUpdate(this.session);
-      this.cb.onFollowersUpdate(this.followers);
-      this.cb.onPostsUpdate(this.posts);
+      // If WS streamed incremental updates during the tick, followers and posts
+      // are already current — only refresh session state (for virtual_time).
+      // Otherwise do the full refresh as a fallback.
+      if (this._wsTickUpdateCount > 0) {
+        const sessionRes = await this.api.getSession(this.session.session_id);
+        this.session = sessionRes;
+        this.cb.onSessionUpdate(this.session);
+      } else {
+        const [sessionRes, followerRes, postRes] = await Promise.all([
+          this.api.getSession(this.session.session_id),
+          this.api.getFollowers(this.session.session_id, 0, 200),
+          this.api.getPosts(this.session.session_id, 0, 20),
+        ]);
+        this.session = sessionRes;
+        this.followers = followerRes.followers.map(toMapFollower);
+        this.posts = postRes.posts;
+        this.cb.onFollowersUpdate(this.followers);
+        this.cb.onPostsUpdate(this.posts);
+      }
 
       const vtDisplay = new Date(this.session.virtual_time).toLocaleString();
       this.cb.onLog(
@@ -281,6 +292,51 @@ export class SessionController {
     } else if (msg.type === "error") {
       const data = msg.data as { message?: string } | undefined;
       this.cb.onLog(`WS error: ${data?.message ?? "unknown"}`);
+    } else if (msg.type === "tick_start") {
+      const data = msg.data as { tick_number: number; virtual_time: string; archetype_count: number };
+      this.cb.onLog(`Tick #${data.tick_number} started — ${data.archetype_count} archetypes`);
+    } else if (msg.type === "tick_archetype_decision") {
+      const data = msg.data as { archetype_id: number; actions: WsArchetypeAction[] };
+      this.cb.onArchetypeDecision?.(data.archetype_id, data.actions);
+    } else if (msg.type === "tick_archetype_update") {
+      const data = msg.data as { archetype_id: number; followers: WsFollowerUpdate[]; posts: WsPostUpdate[] };
+      this._wsTickUpdateCount++;
+
+      // Merge follower happiness and position updates in-place
+      if (data.followers.length > 0) {
+        const updates = new Map(data.followers.map((f) => [f.follower_id, f]));
+        this.followers = this.followers.map((f) => {
+          const u = updates.get(f.follower_id);
+          if (!u) return f;
+          return {
+            ...f,
+            happiness: u.happiness,
+            position: u.position ? toMapbox(u.position as [number, number]) : f.position,
+          };
+        });
+        this.cb.onFollowersUpdate(this.followers);
+      }
+
+      // Prepend new posts (keep last 100)
+      if (data.posts.length > 0) {
+        const newPosts = data.posts.map((p) => ({
+          post_id: p.post_id,
+          follower_id: p.follower_id,
+          text: p.text,
+          virtual_time: p.virtual_time,
+          created_at: null,
+        }));
+        this.posts = [...newPosts, ...this.posts].slice(0, 100);
+        this.cb.onPostsUpdate(this.posts);
+      }
+    } else if (msg.type === "tick_complete") {
+      const data = msg.data as { tick_number: number; virtual_time: string; archetypes_processed: number; archetypes_failed: number };
+      // Update virtual time immediately so the clock advances before HTTP response
+      if (this.session) {
+        this.session = { ...this.session, virtual_time: data.virtual_time };
+        this.cb.onSessionUpdate(this.session);
+      }
+      this.cb.onLog(`Tick #${data.tick_number} complete — ${data.archetypes_processed} OK, ${data.archetypes_failed} fail`);
     }
   }
 
