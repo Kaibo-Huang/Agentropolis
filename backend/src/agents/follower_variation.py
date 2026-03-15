@@ -1,81 +1,45 @@
 """
-Tier 2 follower variation agent — prompt-only, no tools.
+Tweet generation agent — LLM only for tweet text.
 
-Uses gpt-4.1-mini to generate per-follower variations from the archetype's
-action plan. All context is pre-loaded into the prompt (no tool calls).
+Happiness and position are computed by rule-based logic in follower_rules.py.
+This agent only generates tweet_text for the ~10% of followers selected to tweet.
 """
-
 from __future__ import annotations
 
 import json
 
 import railtracks as rt
 
-from src.agents.schemas import FollowerVariationBatch
+from src.agents.schemas import TweetBatch
 
 follower_llm = rt.llm.OpenAILLM("gpt-4.1-mini")
 
-follower_variation_agent = rt.agent_node(
-    name="follower-variation-generator",
+tweet_agent = rt.agent_node(
+    name="follower-tweet-generator",
     llm=follower_llm,
     system_message=(
-        "Given an archetype's action plan and follower details, generate slight variations.\n"
-        "Vary: timing offsets (+-15 min), minor location differences within the same\n"
-        "neighborhood (if at home) or work district (if at work),\n"
-        "whether they post a tweet (~10% should), happiness delta scaled by their volatility.\n"
-        "Return JSON array of follower updates."
+        "Generate a short, personality-driven tweet for each follower based on their "
+        "archetype's current actions. Keep tweets under 140 characters. "
+        "Write in first person. Reflect the follower's name and any ailments. "
+        "Make it feel human — varied tone, occasional humour or frustration."
     ),
-    output_schema=FollowerVariationBatch,
+    output_schema=TweetBatch,
 )
 
 
-def build_follower_variation_prompt(archetype, archetype_response, followers):
-    """Build the user message with all context pre-loaded for gpt-4.1-mini.
-
-    Parameters
-    ----------
-    archetype : Archetype
-        The SQLAlchemy archetype model instance.
-    archetype_response : ArchetypeResponse
-        The validated response from the Tier 1 agent.
-    followers : list[Follower]
-        All followers belonging to this archetype.
-
-    Returns
-    -------
-    str
-        The fully-formed user message containing all context the Tier 2
-        agent needs to produce variations.
-    """
-    actions_json = json.dumps(
-        [a.model_dump() for a in archetype_response.actions]
+def build_tweet_prompt(archetype, archetype_response, tweeters: list) -> str:
+    """Build a minimal prompt for tweet generation."""
+    actions_summary = ", ".join(
+        f"{a.action_type}({a.duration}h)" for a in archetype_response.actions
     )
-    followers_json = json.dumps(
-        [
-            {
-                "follower_id": f.follower_id,
-                "name": f.name,
-                "volatility": f.volatility,
-                "happiness": f.happiness,
-                "position": f.position,
-            }
-            | ({"ailments": f.status_ailments} if f.status_ailments else {})
-            for f in followers
-        ]
-    )
-
+    followers_json = json.dumps([
+        {"follower_id": f.follower_id, "name": f.name}
+        | ({"ailments": f.status_ailments} if f.status_ailments else {})
+        for f in tweeters
+    ])
     home = getattr(archetype, "home_neighborhood", None) or archetype.region
-    work = getattr(archetype, "work_district", None) or archetype.region
-
     return (
-        f"Archetype: {archetype.industry} workers living in {home}, working in {work}\n"
-        f"Archetype actions for this tick:\n{actions_json}\n\n"
-        f"Followers to generate variations for:\n{followers_json}\n\n"
-        "Generate one variation per follower. For each follower:\n"
-        "- timing_offset_minutes: small offset (-15 to +15)\n"
-        "- happiness_delta: scaled by their volatility "
-        "(multiply a small base delta -0.1 to +0.1 by their volatility)\n"
-        "- tweet_text: ~10% of followers should have a tweet "
-        "(short, personality-driven)\n"
-        "- position: [lat, lng] if different from archetype default\n"
+        f"Archetype: {archetype.industry} workers in {home}\n"
+        f"Actions this tick: {actions_summary}\n\n"
+        f"Write one tweet for each follower:\n{followers_json}"
     )
