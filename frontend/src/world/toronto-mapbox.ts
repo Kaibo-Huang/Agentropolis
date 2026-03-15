@@ -560,7 +560,7 @@ export class TorontoMapboxScene {
       closeOnClick: false,
       className: "follower-popup-container",
       anchor: "bottom",
-      offset: [0, 500],
+      offset: [0, 10],
     });
 
     const CLICK_MOVE_THRESHOLD_PX = 6;
@@ -573,7 +573,7 @@ export class TorontoMapboxScene {
       ] as [mapboxgl.PointLike, mapboxgl.PointLike];
 
     const tryShowFollowerPopup = (point: { x: number; y: number }) => {
-      if (!this.map || !this.followerPopup) return;
+      if (!this.map) return;
       const features = this.map.queryRenderedFeatures(getBox(point), {
         layers: ["followers-layer"],
       });
@@ -585,6 +585,20 @@ export class TorontoMapboxScene {
       if (!follower) return;
       const coord = (feat.geometry as GeoJSON.Point).coordinates;
       const lngLat = { lng: coord[0], lat: coord[1] };
+
+      // Position popup below the dot if in upper half, above if in lower half
+      const containerHeight = this.map.getContainer().clientHeight;
+      const anchor = point.y < containerHeight / 2 ? "top" : "bottom";
+
+      this.followerPopup?.remove();
+      this.followerPopup = new mapboxgl.Popup({
+        closeButton: true,
+        closeOnClick: false,
+        className: "follower-popup-container",
+        anchor,
+        offset: [0, 10],
+      });
+
       this.followerPopup
         .setLngLat(lngLat)
         .setHTML(buildFollowerPopupHTML(follower))
