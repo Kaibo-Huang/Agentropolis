@@ -17,12 +17,12 @@ export function useKeyboardShortcuts() {
 
       if ((e.key === "e" || e.key === "E") && !isInput) {
         e.preventDefault();
-        useSimulationStore.getState().toggleEventsSheet();
+        useSimulationStore.getState().openToolkitTab("inject_event");
       }
 
       if ((e.key === "a" || e.key === "A") && !isInput) {
         e.preventDefault();
-        useSimulationStore.getState().toggleAvatarSheet();
+        useSimulationStore.getState().openToolkitTab("create_avatar");
       }
     };
 
