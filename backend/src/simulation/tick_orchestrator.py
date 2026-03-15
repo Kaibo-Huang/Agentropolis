@@ -21,7 +21,7 @@ from datetime import datetime, timedelta
 import railtracks as rt
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.agents.archetype_agent import build_archetype_agent
+from src.agents.archetype_agent import archetype_agent, build_archetype_user_message
 from src.agents.fallback import generate_fallback_actions
 from src.agents.follower_variation import (
     build_follower_variation_prompt,
@@ -34,7 +34,7 @@ from src.db.models import Archetype
 
 logger = logging.getLogger(__name__)
 
-MAX_CONCURRENT_ARCHETYPES = 10
+MAX_CONCURRENT_ARCHETYPES = 100
 MAX_LLM_RETRIES = 3
 
 
@@ -223,13 +223,20 @@ async def _process_single_archetype(
             prefetched_context = None
 
         archetype_response = await _get_archetype_decision(
-            db=db,
             session_id=session_id,
             archetype=archetype,
-            current_time=current_time,
-            target_time=target_time,
             tick_number=tick_number,
-            prefetched_context=prefetched_context,
+            target_time=target_time,
+            prefetched_context=prefetched_context or {
+                "current_time": current_time.isoformat(),
+                "next_tick_time": (target_time + timedelta(hours=1)).isoformat(),
+                "recent_memories": [],
+                "follower_stats": {},
+                "relationships": {},
+                "events": [],
+                "home_locations": [],
+                "work_locations": [],
+            },
         )
 
         # ------------------------------------------------------------------
@@ -301,59 +308,29 @@ async def _process_single_archetype(
 
 
 async def _get_archetype_decision(
-    db: AsyncSession,
     session_id: uuid.UUID,
     archetype: Archetype,
-    current_time: datetime,
-    target_time: datetime,
     tick_number: int,
-    prefetched_context: dict | None = None,
+    target_time: datetime,
+    prefetched_context: dict,
 ) -> ArchetypeResponse:
-    """Get archetype decision with retry and deterministic fallback.
-
-    When prefetched_context is provided the agent has no tools and answers in
-    a single LLM call. Falls back to tool-based agent if context is None.
+    """Get archetype decision — single LLM call with all context in the user message.
 
     Retry strategy:
-      1. Normal call
-      2. Retry with error context appended
-      3. Final retry
-      4. Deterministic fallback (simulation never halts)
+      1-3. Retry with attempt number appended to message
+      4.   Deterministic fallback (simulation never halts)
     """
-    agent = build_archetype_agent(archetype, prefetched_context)
-
-    # rt.Session context is only needed when using tool-based agent
-    session_context: dict = {}
-    if prefetched_context is None:
-        actions_finish_at = current_time
-        next_tick_time = target_time + timedelta(hours=1)
-        session_context = {
-            "session_id": session_id,
-            "archetype_id": archetype.archetype_id,
-            "region": archetype.region,
-            "home_neighborhood": getattr(archetype, "home_neighborhood", None) or archetype.region,
-            "work_district": getattr(archetype, "work_district", None) or archetype.region,
-            "db_session": db,
-            "virtual_time": current_time.isoformat(),
-            "actions_finish_at": actions_finish_at.isoformat(),
-            "next_tick_time": next_tick_time.isoformat(),
-        }
-
     for attempt in range(MAX_LLM_RETRIES):
         try:
+            user_msg = build_archetype_user_message(
+                archetype, tick_number, prefetched_context, attempt
+            )
             with rt.Session(
                 name=f"tick-{session_id}-arch-{archetype.archetype_id}",
-                context=session_context,
                 timeout=15.0,
                 save_state=False,
             ):
-                user_msg = f"Make decisions for tick {tick_number}."
-                if attempt > 0:
-                    user_msg += (
-                        f" (Retry attempt {attempt + 1}. Previous attempt failed.)"
-                    )
-
-                result = await rt.call(agent, user_msg)
+                result = await rt.call(archetype_agent, user_msg)
                 return result.structured
         except Exception as e:
             logger.warning(
@@ -370,7 +347,6 @@ async def _get_archetype_decision(
                 )
                 return generate_fallback_actions(target_time)
 
-    # Unreachable in normal flow, but guarantees no halt
     return generate_fallback_actions(target_time)
 
 
