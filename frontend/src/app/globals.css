@@ -277,11 +277,17 @@ h1, h2, h3, h4, h5, h6 {
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  text-align: center;
   padding: 0.5rem 1.25rem;
   background: rgba(255, 255, 255, 0);
   border-radius: 9999px;
-  min-width: 10rem;
+}
+.hud-time-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+.hud-time-controls .btn {
+  white-space: nowrap;
 }
 .time-day {
   font-family: var(--font-heading);
@@ -290,6 +296,9 @@ h1, h2, h3, h4, h5, h6 {
   letter-spacing: -0.03em;
   line-height: 1.15;
   color: var(--foreground);
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.7),
+    0 0 14px rgba(0, 0, 0, 0.35);
 }
 
 /* Stats - right */
@@ -573,6 +582,23 @@ h1, h2, h3, h4, h5, h6 {
   display: none;
 }
 @media (max-width: 1023px) {
+  .hud-title,
+  .hud-right {
+    display: none;
+  }
+  .hud-center {
+    padding: 0.35rem 0.4rem;
+  }
+  .hud-time-controls {
+    gap: 0.35rem;
+  }
+  .hud-time-controls .btn {
+    font-size: 0.75rem;
+    padding: 0.3rem 0.5rem;
+  }
+  .time-day {
+    font-size: 1.02rem;
+  }
   .hud-controls {
     gap: 0.4rem;
   }

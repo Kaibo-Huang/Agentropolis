@@ -32,29 +32,32 @@ export default function HUD() {
       <div className="hud-left">
         <h1 className="hud-title">Toronto</h1>
         <div className="hud-controls">
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={!canTick}
-            onClick={() => tickOnce()}
-          >
-            Tick +1h
-          </button>
-          <button
-            type="button"
-            className="btn"
-            disabled={phase !== "ready" && phase !== "auto_running"}
-            onClick={() => (isAutoRunning ? stopAutoRun() : startAutoRun())}
-          >
-            {isAutoRunning ? "Stop" : "Auto-Run"}
-          </button>
           <button type="button" className="btn btn-toolkit-mobile" onClick={toggleToolkitMobile}>
             Toolkit
           </button>
         </div>
       </div>
       <div className="hud-center">
-        <div className="time-day">{dayDisplay}</div>
+        <div className="hud-time-controls">
+          <button
+            type="button"
+            className="btn"
+            disabled={phase !== "ready" && phase !== "auto_running"}
+            onClick={() => (isAutoRunning ? stopAutoRun() : startAutoRun())}
+            aria-label={isAutoRunning ? "Pause simulation" : "Play simulation"}
+          >
+            {isAutoRunning ? "Pause" : "Play"}
+          </button>
+          <div className="time-day">{dayDisplay}</div>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={!canTick}
+            onClick={() => tickOnce()}
+          >
+            {">> +1h"}
+          </button>
+        </div>
       </div>
       <div className="hud-right">
         <span className="stat-pill">
