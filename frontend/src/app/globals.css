@@ -285,7 +285,7 @@ h1, h2, h3, h4, h5, h6 {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.2rem;
 }
 .hud-time-controls .btn {
   white-space: nowrap;
@@ -298,25 +298,35 @@ h1, h2, h3, h4, h5, h6 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2rem;
-  height: 2rem;
+  width: 1.8rem;
+  height: 1.8rem;
   border-radius: 9999px;
-  border: 1px solid #f4ebbd;
+  border: 2px solid #f6f1e2;
   background: transparent;
-  color: #f4ebbd;
+  color: #ffffff;
   padding: 0;
+  padding-left: 1.5px;
+  font-size: 0.8rem;
+  line-height: 1;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
 }
 .hud-time-buttons .btn-primary {
-  border-color: #f4ebbd;
+  border-color: #f6f1e2;
   background: transparent;
-  color: #f4ebbd;
+  color: #ffffff;
+  font-size: 1.2rem;
+  line-height: 0.2;
+}
+.hud-time-buttons .btn:hover {
+  background: #ffffff;
+  color: #000000;
+  border-color: #ffffff;
 }
 .hud-time-buttons .btn span[aria-hidden] {
   display: inline-block;
-  font-size: 0.9rem;
-  line-height: 1;
-  margin-left: 2px;
-  margin-right: 2px;
+  
+  margin-left: 0;
+  margin-right: 0;
 }
 .time-day {
   font-family: var(--font-heading);
