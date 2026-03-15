@@ -95,6 +95,8 @@ export interface EventResponse {
   event_prompt: string;
   virtual_time: string;
   session_id: string;
+  effects: Record<string, unknown> | null;
+  end_time: string | null;
 }
 
 // ── Posts ──

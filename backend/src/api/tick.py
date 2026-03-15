@@ -116,7 +116,8 @@ async def advance_tick(
         try:
             from src.simulation.health_tick import run_health_tick  # type: ignore[import]
 
-            health_result = await run_health_tick(session_id)
+            disease_mult = result.get("disease_transmission_multiplier", 1.0)
+            health_result = await run_health_tick(session_id, disease_multiplier=disease_mult)
             result["health_updates"] = health_result
         except ImportError:
             pass  # health_tick module not available yet — safe to skip

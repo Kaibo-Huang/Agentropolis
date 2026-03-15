@@ -482,9 +482,20 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
         const res = await api.injectEvent(session.session_id, {
           event_prompt: eventPrompt,
         });
-        log(
-          `Event injected: "${res.event_prompt.substring(0, 60)}..."`,
-        );
+        // Build effects summary for user feedback
+        const fx = res.effects;
+        if (fx) {
+          const parts: string[] = [];
+          if (fx.stay_home_rate != null) parts.push(`${Math.round((fx.stay_home_rate as number) * 100)}% stay home`);
+          if (fx.happiness_delta != null) parts.push(`happiness ${(fx.happiness_delta as number) > 0 ? "+" : ""}${fx.happiness_delta}`);
+          if (fx.tweet_rate_multiplier != null) parts.push(`tweets ${fx.tweet_rate_multiplier}x`);
+          if (fx.disease_transmission_multiplier != null) parts.push(`disease ${fx.disease_transmission_multiplier}x`);
+          if (fx.tweet_sentiment) parts.push(`mood: ${fx.tweet_sentiment}`);
+          const summary = parts.length > 0 ? parts.join(", ") : "narrative-only";
+          log(`Event injected: ${summary}`);
+        } else {
+          log(`Event injected: "${res.event_prompt.substring(0, 60)}..."`);
+        }
       } catch (err) {
         const message =
           err instanceof Error ? err.message : String(err);

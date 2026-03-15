@@ -47,6 +47,7 @@ def build_archetype_user_message(
     follower_str = json.dumps(ctx.get("follower_stats", {}))
     rel_str = json.dumps(ctx.get("relationships", {}))
     events_str = json.dumps(ctx.get("events", []))
+    effects_str = json.dumps(ctx.get("event_effects_summary", {}))
     home_locs = json.dumps(ctx.get("home_locations", []))
     work_locs = json.dumps(ctx.get("work_locations", []))
 
@@ -62,6 +63,7 @@ def build_archetype_user_message(
         f"Follower stats: {follower_str}\n\n"
         f"Relationship summary: {rel_str}\n\n"
         f"Active events: {events_str}\n\n"
+        f"City conditions: {effects_str}\n\n"
         f"Home neighborhood locations ({home}): {home_locs}\n\n"
         f"Work district locations ({work}): {work_locs}\n\n"
         f"Generate actions to fill the time from {ctx['current_time']} to {ctx['next_tick_time']}."
