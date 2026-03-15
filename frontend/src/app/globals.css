@@ -30,6 +30,11 @@ body {
   background: var(--background);
   -webkit-font-smoothing: antialiased;
 }
+@keyframes sim-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-heading);
 }
@@ -342,31 +347,197 @@ h1, h2, h3, h4, h5, h6 {
   margin: 0.1rem 0;
 }
 
-/* Tweet panel - right sidebar */
-.tweet-panel {
+/* Sidebar - right rail */
+.sim-sidebar {
+  --sidebar-panel-width: min(380px, calc(100vw - 5rem));
   position: fixed;
-  top: 3.5rem;
-  right: 0;
-  width: 280px;
-  max-height: calc(100vh - 4rem);
-  overflow-y: auto;
+  top: 4.2rem;
+  right: 0.75rem;
   z-index: 15;
-  background: var(--card);
-  border-left: 1px solid var(--border);
-  padding: 0.75rem;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0.5rem;
   pointer-events: auto;
 }
-.tweet-panel h2 {
-  font-family: var(--font-heading);
-  font-size: 0.7rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+.sidebar-tabs {
+  background: linear-gradient(
+      150deg,
+      rgba(255, 255, 255, 0.06) 0%,
+      rgba(255, 255, 255, 0) 45%
+    ),
+    var(--card);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  padding: 0.48rem;
+  width: 3.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.sidebar-tab {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: calc(var(--radius) - 1px);
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.01);
   color: var(--muted-foreground);
-  margin: 0 0 0.5rem 0;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.3rem;
+}
+.sidebar-tab:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: var(--foreground);
+}
+.sidebar-tab.active {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.24);
+  color: var(--foreground);
+}
+.sidebar-tab-icon {
+  width: 1.1rem;
+  height: 1.1rem;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+.sidebar-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.sidebar-panel {
+  width: 0;
+  max-height: calc(100vh - 5rem);
+  overflow: hidden;
+  opacity: 0;
+  border: 1px solid transparent;
+  border-radius: 0.9rem;
+  background: linear-gradient(
+      150deg,
+      rgba(255, 255, 255, 0.06) 0%,
+      rgba(255, 255, 255, 0) 45%
+    ),
+    var(--card);
+  pointer-events: none;
+  transition: width 0.24s ease, opacity 0.18s ease,
+    border-color 0.18s ease;
+}
+.sim-sidebar.expanded .sidebar-panel {
+  width: var(--sidebar-panel-width);
+  opacity: 1;
+  border-color: var(--border);
+  pointer-events: auto;
+}
+.sidebar-panel-inner {
+  width: var(--sidebar-panel-width);
+  max-height: calc(100vh - 5rem);
+  overflow-y: auto;
+  padding: 0.7rem 0.75rem 0.75rem;
+}
+.sidebar-label {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 0.64rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.sidebar-clock-row {
+  margin-top: 0.4rem;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+.sidebar-clock {
+  font-family: var(--font-mono);
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--foreground);
+}
+.sidebar-clock-tag {
+  font-family: var(--font-heading);
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: #22c55e;
+}
+.sidebar-meta {
+  margin: 0.15rem 0 0;
+  font-size: 0.68rem;
+  color: var(--muted-foreground);
+}
+.sidebar-time-track {
+  margin-top: 0.55rem;
+  width: 100%;
+  height: 0.28rem;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+}
+.sidebar-time-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #14b8a6, #22d3ee);
+  transition: width 1s linear;
+}
+.sidebar-thought {
+  margin: 0.45rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--foreground);
+}
+.sidebar-secondary-btn {
+  margin-top: 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 1px);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--foreground);
+  padding: 0.38rem 0.55rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-heading);
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.sidebar-secondary-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+.tweet-list {
+  margin-top: 0.6rem;
+  max-height: min(44vh, calc(100vh - 16rem));
+  overflow-y: auto;
+  padding-right: 0.15rem;
+}
+.tweet-empty {
+  margin: 0.55rem 0 0;
+  font-size: 0.68rem;
+  color: var(--muted-foreground);
 }
 .tweet {
-  padding: 0.4rem 0;
+  padding: 0.42rem 0;
   border-bottom: 1px solid var(--border);
   font-size: 0.7rem;
 }
@@ -387,6 +558,27 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--muted);
   display: block;
   margin-top: 0.1rem;
+}
+
+@media (max-width: 960px) {
+  .sim-sidebar {
+    top: 3.95rem;
+    right: 0.5rem;
+    --sidebar-panel-width: min(340px, calc(100vw - 4.4rem));
+  }
+  .sidebar-tabs {
+    width: 3rem;
+    padding: 0.42rem;
+  }
+  .sidebar-panel {
+    max-height: calc(100vh - 4.5rem);
+  }
+  .sidebar-panel-inner {
+    max-height: calc(100vh - 4.5rem);
+  }
+  .tweet-list {
+    max-height: min(32vh, calc(100vh - 14rem));
+  }
 }
 
 /* Avatar creator sheet */
@@ -515,4 +707,55 @@ h1, h2, h3, h4, h5, h6 {
 .btn-welcome-start {
   font-size: 1rem;
   padding: 0.65rem 1.75rem;
+}
+.welcome-error {
+  margin: 0.85rem 0 0;
+  font-size: 0.8rem;
+  color: #fca5a5;
+}
+
+/* Simulation loading overlay */
+.sim-loading-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: radial-gradient(
+      circle at 20% 10%,
+      rgba(255, 255, 255, 0.04) 0%,
+      rgba(255, 255, 255, 0) 40%
+    ),
+    linear-gradient(165deg, #09090b 0%, #14141a 55%, #0b0b10 100%);
+}
+.sim-loading-content {
+  width: min(100%, 28rem);
+  padding: 1.5rem;
+  border-radius: 0.85rem;
+  border: 1px solid var(--border);
+  background: rgba(24, 24, 27, 0.8);
+  text-align: center;
+}
+.sim-loading-spinner {
+  display: inline-block;
+  width: 2rem;
+  height: 2rem;
+  margin-bottom: 0.65rem;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.24);
+  border-top-color: var(--foreground);
+  animation: sim-loading-spin 0.85s linear infinite;
+}
+.sim-loading-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.sim-loading-message {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted-foreground);
 }

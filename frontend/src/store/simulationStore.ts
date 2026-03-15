@@ -48,6 +48,7 @@ export interface SimulationState {
   // Data
   phase: ControllerPhase;
   session: SessionResponse | null;
+  connectingSessionId: string | null;
   followers: MapFollower[];
   archetypes: ArchetypeResponse[];
   posts: PostResponse[];
@@ -55,12 +56,12 @@ export interface SimulationState {
   hourOfDay: number;
 
   // UI state
-  showWelcome: boolean;
   showEventsSheet: boolean;
   showAvatarSheet: boolean;
 
   // Actions
-  createAndConnect: () => Promise<void>;
+  createSession: () => Promise<string>;
+  connectToSession: (sessionId: string) => Promise<void>;
   tickOnce: () => Promise<void>;
   startAutoRun: () => void;
   stopAutoRun: () => void;
@@ -81,7 +82,6 @@ export interface SimulationState {
   disconnect: () => Promise<void>;
   toggleEventsSheet: () => void;
   toggleAvatarSheet: () => void;
-  dismissWelcome: () => void;
   log: (msg: string) => void;
 }
 
@@ -99,6 +99,7 @@ let socket: SimulationSocket | null = null;
 let autoRunTimer: ReturnType<typeof setTimeout> | null = null;
 let ticking = false;
 let consecutiveFailures = 0;
+let connectAttempt = 0;
 
 export const useSimulationStore = create<SimulationState>((set, get) => {
   function log(msg: string) {
@@ -131,36 +132,87 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
     // Initial state
     phase: "idle",
     session: null,
+    connectingSessionId: null,
     followers: [],
     archetypes: [],
     posts: [],
     logEntries: [],
     hourOfDay: 8,
-    showWelcome: true,
     showEventsSheet: false,
     showAvatarSheet: false,
 
     // Actions
     log,
 
-    async createAndConnect() {
-      set({ phase: "loading" });
-      let sessionId: string | null = null;
+    async createSession() {
+      const created = await api.createSession();
+      log(`Session created: ${created.session_id.substring(0, 8)}...`);
+      return created.session_id;
+    },
+
+    async connectToSession(sessionId: string) {
+      const normalizedSessionId = sessionId.trim();
+      if (!normalizedSessionId) return;
+
+      const {
+        session: currentSession,
+        phase: currentPhase,
+        connectingSessionId,
+      } = get();
+      if (
+        currentSession?.session_id === normalizedSessionId &&
+        (currentPhase === "ready" ||
+          currentPhase === "ticking" ||
+          currentPhase === "auto_running")
+      ) {
+        return;
+      }
+      if (
+        currentPhase === "loading" &&
+        connectingSessionId === normalizedSessionId
+      ) {
+        return;
+      }
+
+      const previousSessionId = currentSession?.session_id;
+      const attempt = ++connectAttempt;
+      get().stopAutoRun();
+      socket?.disconnect();
+      socket = null;
+      ticking = false;
+      consecutiveFailures = 0;
+
+      if (
+        previousSessionId &&
+        previousSessionId !== normalizedSessionId
+      ) {
+        api.pauseSession(previousSessionId).catch(() => {
+          // best-effort when switching sessions
+        });
+      }
+
+      set({
+        phase: "loading",
+        connectingSessionId: normalizedSessionId,
+        session: null,
+        followers: [],
+        archetypes: [],
+        posts: [],
+        showEventsSheet: false,
+        showAvatarSheet: false,
+      });
+
       try {
-        // 1. Create session
-        const session = await api.createSession();
-        sessionId = session.session_id;
-        set({ session, hourOfDay: computeHourOfDay(session) });
-        log(`Session created: ${session.session_id.substring(0, 8)}...`);
-
-        // 2. Resume (paused -> running)
-        const resumed = await api.resumeSession(session.session_id);
+        // 1. Resume (paused -> running)
+        const resumed = await api.resumeSession(normalizedSessionId);
+        if (attempt !== connectAttempt) return;
         set({ session: resumed, hourOfDay: computeHourOfDay(resumed) });
+        log(`Session connected: ${normalizedSessionId.substring(0, 8)}...`);
 
-        // 3. Connect WebSocket
+        // 2. Connect WebSocket
         socket = new SimulationSocket(
           WS_BASE,
-          session.session_id,
+          normalizedSessionId,
           (msg) => {
             if (msg.type === "subscribed") {
               log("WebSocket subscribed");
@@ -172,12 +224,17 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
         );
         socket.connect();
 
-        // 4. Fetch initial data in parallel
+        // 3. Fetch initial data in parallel
         const [followerRes, archetypeRes, postRes] = await Promise.all([
-          api.getFollowers(session.session_id, 0, 200),
-          api.getArchetypes(session.session_id),
-          api.getPosts(session.session_id, 0, 20),
+          api.getFollowers(normalizedSessionId, 0, 200),
+          api.getArchetypes(normalizedSessionId),
+          api.getPosts(normalizedSessionId, 0, 20),
         ]);
+        if (attempt !== connectAttempt) {
+          socket?.disconnect();
+          socket = null;
+          return;
+        }
 
         const followers = followerRes.followers.map(toMapFollower);
         set({
@@ -185,20 +242,16 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
           archetypes: archetypeRes.archetypes,
           posts: postRes.posts,
           phase: "ready",
+          connectingSessionId: null,
         });
         log(
           `Ready: ${followers.length} followers, ${archetypeRes.archetypes.length} archetypes`,
         );
       } catch (err) {
-        // Cleanup orphaned session if it was created
-        if (sessionId) {
-          try {
-            await api.deleteSession(sessionId);
-          } catch {
-            // best-effort cleanup
-          }
-        }
-        set({ phase: "error" });
+        if (attempt !== connectAttempt) return;
+        socket?.disconnect();
+        socket = null;
+        set({ phase: "error", connectingSessionId: null });
         const message =
           err instanceof Error ? err.message : String(err);
         log(`Error: ${message}`);
@@ -343,6 +396,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
     },
 
     async disconnect() {
+      connectAttempt++;
       get().stopAutoRun();
       socket?.disconnect();
       socket = null;
@@ -359,7 +413,13 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
       set({
         session: null,
         followers: [],
+        archetypes: [],
+        posts: [],
+        connectingSessionId: null,
         phase: "idle",
+        hourOfDay: 8,
+        showEventsSheet: false,
+        showAvatarSheet: false,
       });
     },
 
@@ -369,10 +429,6 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
 
     toggleAvatarSheet() {
       set((s) => ({ showAvatarSheet: !s.showAvatarSheet }));
-    },
-
-    dismissWelcome() {
-      set({ showWelcome: false });
     },
   };
 });

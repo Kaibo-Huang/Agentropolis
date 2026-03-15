@@ -1,19 +1,32 @@
 "use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useSimulationStore } from "../store/simulationStore";
 
 export default function WelcomeScreen() {
-  const showWelcome = useSimulationStore((s) => s.showWelcome);
-  const dismissWelcome = useSimulationStore((s) => s.dismissWelcome);
-  const createAndConnect = useSimulationStore((s) => s.createAndConnect);
+  const router = useRouter();
+  const createSession = useSimulationStore((s) => s.createSession);
+  const [isStarting, setIsStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
 
-  const handleStart = () => {
-    dismissWelcome();
-    createAndConnect();
+  const handleStart = async () => {
+    if (isStarting) return;
+    setIsStarting(true);
+    setStartError(null);
+    try {
+      const sessionId = await createSession();
+      router.push(`/sim/${sessionId}`);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to start session";
+      setStartError(message);
+      setIsStarting(false);
+    }
   };
 
   return (
-    <div className={`welcome-screen${showWelcome ? "" : " hidden"}`}>
+    <div className="welcome-screen">
       <div className="welcome-content">
         <h1 className="welcome-title">Agentropolis</h1>
         <p className="welcome-tagline">
@@ -29,10 +42,14 @@ export default function WelcomeScreen() {
         <button
           type="button"
           className="btn btn-primary btn-welcome-start"
+          disabled={isStarting}
           onClick={handleStart}
         >
-          Enter the city
+          {isStarting ? "Preparing city..." : "Enter the city"}
         </button>
+        {startError ? (
+          <p className="welcome-error">{startError}</p>
+        ) : null}
       </div>
     </div>
   );

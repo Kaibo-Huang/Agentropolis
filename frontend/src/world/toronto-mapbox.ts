@@ -46,6 +46,22 @@ export interface TorontoMapboxOptions {
 // Toronto downtown
 const TORONTO_CENTER: [number, number] = [-79.38175019453755, 43.64369424043282];
 
+const BASE_VIEWPORT_BOUNDS = {
+  west: -79.42,
+  east: -79.34,
+  south: 43.62,
+  north: 43.69,
+} as const;
+
+const LEFT_VIEWPORT_EXPANSION_RATIO = 0.2;
+const BASE_VIEWPORT_WIDTH = BASE_VIEWPORT_BOUNDS.east - BASE_VIEWPORT_BOUNDS.west;
+const VIEWPORT_BOUNDS = {
+  west: BASE_VIEWPORT_BOUNDS.west - BASE_VIEWPORT_WIDTH * LEFT_VIEWPORT_EXPANSION_RATIO,
+  east: BASE_VIEWPORT_BOUNDS.east,
+  south: BASE_VIEWPORT_BOUNDS.south,
+  north: BASE_VIEWPORT_BOUNDS.north,
+} as const;
+
 // Landing route: 88 Queens Quay West → CN Tower → return loop (different path)
 // Coordinates: 88 Queens Quay W ≈ [-79.3787, 43.64085], CN Tower ≈ [-79.38705, 43.64257]
 export interface LandingRouteKeyframe {
@@ -504,7 +520,7 @@ function setup3D(
 export class TorontoMapboxScene {
   private map: mapboxgl.Map | null = null;
   private animationId: number = 0;
-  private currentStyle: "light" | "dark" = "light";
+  private currentStyle: "light" | "dark" | null = null;
   private readonly buildingColors: BuildingColorPalette;
   private followers: MapFollower[] = [];
   private container: HTMLElement;
@@ -568,8 +584,12 @@ export class TorontoMapboxScene {
       maxPitch: 60,
       bearing: startAtEarth ? 0 : -20,
       antialias: true,
-      // Only restrict to downtown when not in landing (Earth view needs no bounds)
-      ...(startAtEarth ? {} : { maxBounds: torontoBounds }),
+      // Downtown Toronto core: Bathurst → DVP, waterfront → Bloor,
+      // with 50% extra viewport room on the west side.
+      maxBounds: [
+        [VIEWPORT_BOUNDS.west, VIEWPORT_BOUNDS.south],
+        [VIEWPORT_BOUNDS.east, VIEWPORT_BOUNDS.north],
+      ],
     });
 
     this.map.addControl(new GentleZoomControl(), "bottom-right");
@@ -638,12 +658,11 @@ export class TorontoMapboxScene {
     };
     container.addEventListener("mousedown", this.onContainerMouseDown);
 
-    const BOUNDS_W = -79.38, BOUNDS_E = -79.37, BOUNDS_S = 43.63, BOUNDS_N = 43.66;
     const clampCenter = () => {
       if (!this.map) return;
       const c = this.map.getCenter();
-      const lng = Math.max(BOUNDS_W, Math.min(BOUNDS_E, c.lng));
-      const lat = Math.max(BOUNDS_S, Math.min(BOUNDS_N, c.lat));
+      const lng = Math.max(VIEWPORT_BOUNDS.west, Math.min(VIEWPORT_BOUNDS.east, c.lng));
+      const lat = Math.max(VIEWPORT_BOUNDS.south, Math.min(VIEWPORT_BOUNDS.north, c.lat));
       if (lng !== c.lng || lat !== c.lat) {
         this.map.setCenter([lng, lat]);
       }
@@ -757,6 +776,8 @@ export class TorontoMapboxScene {
       this.styleLoaded = true;
       setup3D(this.map, this.buildingColors, this.residentialGeoJSON ?? undefined, this.workGeoJSON ?? undefined);
       setupFollowerLayer(this.map, this.lastFollowers);
+      // Style reload resets atmosphere state; force next frame to re-apply fog.
+      this.currentStyle = null;
       // Apply any followers queued before style was ready
       if (this.pendingFollowers) {
         const pending = this.pendingFollowers;
@@ -839,7 +860,8 @@ export class TorontoMapboxScene {
     const mode = isNight ? "dark" : "light";
 
     // Atmospheric fog for day/night mood.
-    if (this.currentStyle !== mode) {
+    // Guard style-dependent map operations until style JSON is fully loaded.
+    if (this.map.isStyleLoaded() && this.currentStyle !== mode) {
       this.currentStyle = mode;
       if (isNight) {
         this.map.setFog({
