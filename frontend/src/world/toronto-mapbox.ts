@@ -556,7 +556,7 @@ export class TorontoMapboxScene {
 
     const startAtEarth = landingFirstView === true;
     const torontoBounds: [[number, number], [number, number]] = [
-      [-79.42, 43.62], // SW: Bathurst & lakeshore
+      [-79.45, 43.62], // SW: expanded west to cover Exhibition/Parkdale
       [-79.34, 43.69], // NE: just east of DVP & Bloor
     ];
     this.map = new mapboxgl.Map({
@@ -769,7 +769,7 @@ export class TorontoMapboxScene {
       if (this.switchingToSimulationStyle) {
         this.switchingToSimulationStyle = false;
         this.map.setMaxBounds([
-          [-79.42, 43.62],
+          [-79.45, 43.62],
           [-79.34, 43.69],
         ]);
         this.map.easeTo({

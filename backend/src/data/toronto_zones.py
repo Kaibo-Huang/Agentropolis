@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from shapely.geometry import MultiPoint, Point, Polygon, mapping
+from shapely.geometry import GeometryCollection, MultiPoint, MultiPolygon, Point, Polygon, mapping
 from shapely.ops import voronoi_diagram
 
 logger = logging.getLogger(__name__)
@@ -30,11 +30,10 @@ logger = logging.getLogger(__name__)
 
 LAND_POLYGON = Polygon([
     # Top edge (west to east) — extended to cover full viewport at zoom 13
-    (-79.55, 43.75), (-79.24, 43.75),
+    (-79.49, 43.72), (-79.31, 43.73),
     # East edge down to shoreline
-    (-79.24, 43.648),
+    (-79.31, 43.650),
     # Shoreline waypoints (east to west) — refined to track actual waterfront
-    (-79.30, 43.650),    # East Bayfront / Port Lands
     (-79.330, 43.648),   # Cherry Beach approach
     (-79.340, 43.647),   # Keating Channel / Villiers Island
     (-79.350, 43.6465),  # Sugar Beach / Sherbourne Common
@@ -52,11 +51,11 @@ LAND_POLYGON = Polygon([
     (-79.412, 43.631),   # Ontario Place / Budweiser Stage
     (-79.418, 43.630),   # BMO Field / Exhibition Place south edge
     (-79.425, 43.631),   # Exhibition Place west / Marilyn Bell Park
-    (-79.435, 43.631),   # Sunnyside area
-    (-79.45, 43.630),    # Humber Bay east
-    (-79.55, 43.628),    # far west (Humber Bay / Mimico)
+    (-79.49, 43.631),    # Sunnyside area
+    (-79.49, 43.630),    # Humber Bay east
+    (-79.49, 43.628),    # far west (Humber Bay / Mimico)
     # Close
-    (-79.55, 43.75),
+    (-79.49, 43.72),
 ])
 
 # ---------------------------------------------------------------------------
@@ -214,6 +213,10 @@ def _compute_unified_voronoi(
         for cell in regions.geoms:
             if cell.contains(seed_pt):
                 clipped = cell.intersection(clip_polygon)
+                # Clipping can produce GeometryCollection/MultiPolygon; keep largest Polygon
+                if isinstance(clipped, (GeometryCollection, MultiPolygon)):
+                    polys = [g for g in clipped.geoms if isinstance(g, Polygon)]
+                    clipped = max(polys, key=lambda p: p.area) if polys else clipped
                 cells[name] = clipped
                 break
     return cells
