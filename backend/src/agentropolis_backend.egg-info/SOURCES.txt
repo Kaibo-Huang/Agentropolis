@@ -9,6 +9,7 @@ src/agentropolis_backend.egg-info/requires.txt
 src/agentropolis_backend.egg-info/top_level.txt
 src/agents/archetype_agent.py
 src/agents/fallback.py
+src/agents/follower_rules.py
 src/agents/follower_variation.py
 src/agents/schemas.py
 src/agents/tools.py
@@ -19,6 +20,7 @@ src/api/posts.py
 src/api/router.py
 src/api/sessions.py
 src/api/tick.py
+src/api/zones.py
 src/avatar/__init__.py
 src/avatar/generator.py
 src/avatar/schema.py

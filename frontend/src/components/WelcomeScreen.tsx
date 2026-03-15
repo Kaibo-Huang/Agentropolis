@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useSimulationStore } from "../store/simulationStore";
 import StarBorderInput from "./StarBorderInput";
 
@@ -7,10 +8,12 @@ export default function WelcomeScreen() {
   const showWelcome = useSimulationStore((s) => s.showWelcome);
   const dismissWelcome = useSimulationStore((s) => s.dismissWelcome);
   const createAndConnect = useSimulationStore((s) => s.createAndConnect);
+  const [input, setInput] = useState("");
 
   const handleSubmit = () => {
+    if (!input.trim()) return;
     dismissWelcome();
-    createAndConnect();
+    createAndConnect(input.trim());
   };
 
   return (
@@ -29,6 +32,8 @@ export default function WelcomeScreen() {
           className="welcome-simulate-input"
           placeholder="What do you want to simulate?"
           aria-label="What do you want to simulate?"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
           onSubmit={handleSubmit}
         />
       </div>
