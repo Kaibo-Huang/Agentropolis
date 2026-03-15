@@ -12,7 +12,56 @@ import railtracks as rt
 
 from src.agents.schemas import TweetBatch
 
-follower_llm = rt.llm.OpenAILLM("gpt-4.1-mini")
+follower_llm = rt.llm.OpenAILLM("gpt-4.1-mini", temperature=0.9)
+
+OPENING_STYLE_HINTS = [
+    "question",
+    "reaction",
+    "observation",
+    "mini-rant",
+    "short anecdote",
+    "hot take",
+    "deadpan one-liner",
+    "hopeful note",
+]
+
+TONE_HINTS = [
+    "dry",
+    "frustrated",
+    "anxious",
+    "playful",
+    "matter-of-fact",
+    "reflective",
+    "snarky",
+    "optimistic",
+]
+
+ANGLE_HINTS = [
+    "personal inconvenience",
+    "commute friction",
+    "workplace reality",
+    "what I saw around me",
+    "cost/time pressure",
+    "small social observation",
+    "self-aware joke",
+    "advice to friends",
+]
+
+
+def _pick_hint(options: list[str], follower_id: int, salt: int) -> str:
+    """Deterministically pick a hint so adjacent followers get different guidance."""
+    return options[(follower_id * 31 + salt) % len(options)]
+
+
+def _expressiveness_hint(volatility: float | None) -> str:
+    """Map volatility to writing intensity hint."""
+    if volatility is None:
+        return "medium"
+    if volatility < 0.5:
+        return "calm"
+    if volatility < 1.1:
+        return "medium"
+    return "high"
 
 tweet_agent = rt.agent_node(
     name="follower-tweet-generator",
@@ -24,7 +73,9 @@ tweet_agent = rt.agent_node(
         "- Vary the topic: personal impact, hot take, news reaction, complaint, dark humor\n"
         "- NEVER repeat the same phrasing or structure across tweets\n"
         "- Mix opening styles: question, reaction, observation, action, quote-like fragment\n"
-        "- Avoid the template 'Name, ...'; prefer natural conversation\n\n"
+        "- Avoid the template 'Name, ...'; prefer natural conversation\n"
+        "- Do NOT default to duration-led openings like 'Half an hour...'\n"
+        "- If two tweets share the same first 5 words, rewrite one to be distinct\n\n"
         "When major events are happening: be DIRECT and SPECIFIC about the event. "
         "Don't vaguely allude to 'the mood' or 'the city's fear' — name what's happening. "
         "Example for pandemic: 'Can't believe they're making us go to work during a literal outbreak' "
@@ -83,17 +134,34 @@ def build_tweet_prompt(
     generates event-reactive tweets rather than mundane daily-life content.
     Each follower gets unique context (happiness, neighborhood) for variety.
     """
-    actions_summary = ", ".join(
-        f"{a.action_type}({a.duration}h)" for a in archetype_response.actions
+    actions_summary = ", ".join(a.action_type for a in archetype_response.actions)
+    timing_context = ", ".join(
+        f"{a.action_type}:{a.duration}h" for a in archetype_response.actions
     )
-    # Rich per-follower context for variety
+    # Rich per-follower context + deterministic style hints for variety
     followers_data = []
     for f in tweeters:
+        fid = int(f.follower_id)
         entry: dict = {
-            "follower_id": f.follower_id,
+            "follower_id": fid,
             "name": f.name,
             "happiness": round(f.happiness, 2),
+            "expressiveness_hint": _expressiveness_hint(
+                float(getattr(f, "volatility", 0.8))
+            ),
+            "opening_style_hint": _pick_hint(OPENING_STYLE_HINTS, fid, 3),
+            "tone_hint": _pick_hint(TONE_HINTS, fid, 7),
+            "angle_hint": _pick_hint(ANGLE_HINTS, fid, 11),
         }
+        age = getattr(f, "age", None)
+        if age is not None:
+            entry["age"] = int(age)
+        home_nb = getattr(f, "home_neighborhood", None)
+        if home_nb:
+            entry["home_neighborhood"] = home_nb
+        work_dist = getattr(f, "work_district", None)
+        if work_dist:
+            entry["work_district"] = work_dist
         if f.status_ailments:
             entry["ailments"] = f.status_ailments
         followers_data.append(entry)
@@ -131,10 +199,13 @@ def build_tweet_prompt(
     return (
         f"{industry} workers living in {home}\n"
         f"What they did this tick: {actions_summary}\n"
+        f"Timing context (background only): {timing_context}\n"
         f"{event_block}\n"
         "Batch-level style constraints:\n"
         "- Vary the first 3-5 words across tweets; avoid repeated lead-ins\n"
         "- If this batch has 2+ tweets, at most one may start with a name\n"
         "- Names are optional; do not default to 'Name, ...' openings\n"
+        "- Use each follower's opening_style_hint, tone_hint, and angle_hint\n"
+        "- Do not start tweets with raw timing math like 'Half an hour', '30 min', or '1.5h'\n"
         f"Write one unique tweet per follower using follower_id mapping:\n{followers_json}"
     )
