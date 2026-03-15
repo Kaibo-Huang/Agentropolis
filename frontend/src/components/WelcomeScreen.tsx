@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSimulationStore } from "../store/simulationStore";
+import StarBorderInput from "./StarBorderInput";
 
 export default function WelcomeScreen() {
   const router = useRouter();
@@ -23,15 +24,24 @@ export default function WelcomeScreen() {
       setStartError(message);
       setIsStarting(false);
     }
+  }
+  
+  const handleSubmit = () => {
+    dismissWelcome();
+    createAndConnect();
   };
 
   return (
     <div className="welcome-screen">
       <div className="welcome-content">
-        <h1 className="welcome-title">Agentropolis</h1>
+        <img
+          src="/logo.svg"
+          alt="Agentropolis"
+          className="welcome-logo"
+        />
         <p className="welcome-tagline">
-          A living city simulation. Watch AI agents move through Toronto — run
-          time, create your avatar, and inject events.
+        A living city simulation.<br></br>
+        Watch thousands of AI agents move through Toronto in real time.
         </p>
         <ul className="welcome-features">
           <li>Moving arrows show where each agent is heading</li>
@@ -50,6 +60,12 @@ export default function WelcomeScreen() {
         {startError ? (
           <p className="welcome-error">{startError}</p>
         ) : null}
+        <StarBorderInput
+          className="welcome-simulate-input"
+          placeholder="What do you want to simulate?"
+          aria-label="What do you want to simulate?"
+          onSubmit={handleSubmit}
+        />
       </div>
     </div>
   );

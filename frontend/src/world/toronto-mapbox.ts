@@ -1139,7 +1139,7 @@ export class TorontoMapboxScene {
   }
 
   updateState(hourOfDay: number): void {
-    if (!this.map) return;
+    if (!this.map || !this.map.isStyleLoaded()) return;
 
     // Landing route: drive camera along street-level path when welcome screen is shown
     if (this.isLandingRoute && this.landingStartTime >= 0) {
