@@ -227,6 +227,18 @@ const FALLBACK_MEMORY_THOUGHTS = [
   "Looking forward to a quiet evening.",
   "Trying to remember where I parked.",
 ] as const;
+const FALLBACK_INDUSTRIES = [
+  "Tech",
+  "Healthcare",
+  "Finance",
+  "Education",
+  "Retail",
+  "Government",
+  "Manufacturing",
+  "Hospitality",
+  "Transportation",
+  "Construction",
+] as const;
 
 function easeInOut(t: number): number {
   return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
@@ -276,7 +288,7 @@ function buildFollowerPopupHTML(f: MapFollower): string {
     f.recent_memories.length > 0
       ? f.recent_memories.slice(0, 3)
       : pickRandomFallbackMemories(3);
-  const subtitle = (f.industry ?? "").trim() || "Industry Unknown";
+  const subtitle = getIndustrySubtitle(f);
   const appearance =
     f.avatar
       ? [
@@ -353,6 +365,15 @@ function pickRandomFallbackMemories(count: number): MapFollowerMemory[] {
     virtual_time: "",
     thinking,
   }));
+}
+
+function getIndustrySubtitle(f: MapFollower): string {
+  const industry = (f.industry ?? "").trim();
+  if (industry) return industry;
+  // Stable pseudo-random fallback by follower id, so it feels random across people
+  // but doesn't change every time the popup is opened.
+  const idx = Math.abs((f.follower_id * 37 + 17) % FALLBACK_INDUSTRIES.length);
+  return FALLBACK_INDUSTRIES[idx];
 }
 
 function escapeHtml(s: string): string {

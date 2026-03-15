@@ -788,6 +788,8 @@ export default function Toolkit() {
   const activeLabel =
     TOOLKIT_ITEMS.find((item) => item.tab === activeToolkitTab)?.label ??
     "Toolkit";
+  const isWideDesktopPanel =
+    activeToolkitTab === "demographics" || activeToolkitTab === "archetypes";
 
   const onDesktopTabPress = (tab: ToolkitTab) => {
     if (tab === activeToolkitTab) {
@@ -821,7 +823,9 @@ export default function Toolkit() {
             );
           })}
         </aside>
-        <section className={`toolkit-panel${desktopCollapsed ? " collapsed" : ""}`}>
+        <section
+          className={`toolkit-panel${desktopCollapsed ? " collapsed" : ""}${isWideDesktopPanel ? " wide" : ""}`}
+        >
           {!desktopCollapsed && <ToolkitContent tab={activeToolkitTab} />}
         </section>
       </div>
