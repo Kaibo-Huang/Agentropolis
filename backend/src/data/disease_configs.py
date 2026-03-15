@@ -11,17 +11,17 @@ Each entry may include:
 DISEASE_CONFIGS: list[dict] = [
     {
         "name": "flu",
-        "transmission_rate_per_day": 0.05,
+        "transmission_rate_per_day": 0.02,
         "is_contagious": True,
     },
     {
         "name": "covid",
-        "transmission_rate_per_day": 0.08,
+        "transmission_rate_per_day": 0.03,
         "is_contagious": True,
     },
     {
         "name": "cancer",
-        "incidence_rate_per_day": 0.0001,
+        "incidence_rate_per_day": 0.00005,
         "is_contagious": False,
     },
 ]
