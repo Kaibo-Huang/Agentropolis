@@ -216,6 +216,14 @@ function getArchetypeColor(archetypeId: number): string {
 const TRAVEL_DURATION_MS = 3000;
 const THOUGHT_BUBBLE_INTERVAL_MS = 2400;
 const THOUGHT_BUBBLE_OFFSET: [number, number] = [0, 28];
+const FOLLOWERS_SOURCE_ID = "followers";
+const FOLLOWERS_LAYER_ID = "followers-layer";
+const FOLLOWER_SWARMS_SOURCE_ID = "follower-swarms";
+const FOLLOWER_SWARMS_LAYER_ID = "follower-swarms-layer";
+const SWARM_DOTS_PER_FOLLOWER = 4;
+const SWARM_MIN_RADIUS_METERS = 4;
+const SWARM_MAX_RADIUS_METERS = 12;
+const METERS_PER_DEGREE_LAT = 111_320;
 const DEFAULT_THOUGHT_MESSAGES = [
   "Maybe I should reroute through King Street today.",
   "Crowds feel lighter around the waterfront right now.",
@@ -241,6 +249,20 @@ function followersWithPosition(
 ): Array<MapFollower & { position: LngLat }> {
   return followers.filter(
     (f): f is MapFollower & { position: LngLat } => f.position !== null,
+  );
+}
+
+function followersInBounds(
+  map: mapboxgl.Map,
+  followers: Array<MapFollower & { position: LngLat }>,
+): Array<MapFollower & { position: LngLat }> {
+  const bounds = map.getBounds();
+  if (!bounds) return followers;
+  return followers.filter((follower) =>
+    bounds.contains({
+      lng: follower.position[0],
+      lat: follower.position[1],
+    }),
   );
 }
 
@@ -293,6 +315,85 @@ function buildFollowerGeoJSON(
     });
   }
   return { type: "FeatureCollection", features };
+}
+
+function seededUnitRandom(seed: number): number {
+  let x = seed | 0;
+  x ^= x >>> 16;
+  x = Math.imul(x, 0x7feb352d);
+  x ^= x >>> 15;
+  x = Math.imul(x, 0x846ca68b);
+  x ^= x >>> 16;
+  return (x >>> 0) / 4294967296;
+}
+
+function offsetByMeters(
+  position: LngLat,
+  distanceMeters: number,
+  angleRadians: number,
+): LngLat {
+  const [lng, lat] = position;
+  const latRadians = (lat * Math.PI) / 180;
+  const metersPerDegreeLng = Math.max(
+    1,
+    METERS_PER_DEGREE_LAT * Math.cos(latRadians),
+  );
+  const lngOffset = (distanceMeters * Math.cos(angleRadians)) / metersPerDegreeLng;
+  const latOffset = (distanceMeters * Math.sin(angleRadians)) / METERS_PER_DEGREE_LAT;
+  return [lng + lngOffset, lat + latOffset] as LngLat;
+}
+
+function buildFollowerSwarmGeoJSON(
+  followers: MapFollower[],
+): GeoJSON.FeatureCollection<GeoJSON.Point> {
+  const features: GeoJSON.Feature<GeoJSON.Point>[] = [];
+  for (const f of followers) {
+    if (!f.position) continue;
+
+    const color = f.avatar?.outfitColor ?? getArchetypeColor(f.archetype_id);
+    for (let i = 0; i < SWARM_DOTS_PER_FOLLOWER; i++) {
+      const baseAngle = (i / SWARM_DOTS_PER_FOLLOWER) * Math.PI * 2;
+      const angleJitter = (seededUnitRandom(f.follower_id * 131 + i * 997) - 0.5)
+        * (Math.PI / SWARM_DOTS_PER_FOLLOWER);
+      const angle = baseAngle + angleJitter;
+      const distanceMeters = SWARM_MIN_RADIUS_METERS
+        + seededUnitRandom(f.follower_id * 313 + i * 1987)
+          * (SWARM_MAX_RADIUS_METERS - SWARM_MIN_RADIUS_METERS);
+
+      features.push({
+        type: "Feature",
+        properties: {
+          id: f.follower_id,
+          swarm_index: i,
+          color,
+          happiness: f.happiness,
+        },
+        geometry: {
+          type: "Point",
+          coordinates: offsetByMeters(f.position, distanceMeters, angle),
+        },
+      });
+    }
+  }
+  return { type: "FeatureCollection", features };
+}
+
+function syncFollowerSources(
+  map: mapboxgl.Map,
+  followers: MapFollower[],
+): void {
+  const followerData = buildFollowerGeoJSON(followers);
+  const swarmData = buildFollowerSwarmGeoJSON(followers);
+
+  const followerSource = map.getSource(FOLLOWERS_SOURCE_ID);
+  if (followerSource && "setData" in followerSource) {
+    (followerSource as mapboxgl.GeoJSONSource).setData(followerData);
+  }
+
+  const swarmSource = map.getSource(FOLLOWER_SWARMS_SOURCE_ID);
+  if (swarmSource && "setData" in swarmSource) {
+    (swarmSource as mapboxgl.GeoJSONSource).setData(swarmData);
+  }
 }
 
 /** Interpolate skin tone 0–1 to hex (light → dark). */
@@ -364,27 +465,70 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-/** Add Mapbox built-in circle layer for followers (avatar color from properties). */
+/** Add Mapbox built-in circle layers for followers and decorative swarms. */
 function setupFollowerLayer(
   map: mapboxgl.Map,
   followers: MapFollower[],
 ): void {
-  const data = buildFollowerGeoJSON(followers);
-  const source = map.getSource("followers");
+  const followerData = buildFollowerGeoJSON(followers);
+  const swarmData = buildFollowerSwarmGeoJSON(followers);
+
+  const source = map.getSource(FOLLOWERS_SOURCE_ID);
   if (!source) {
-    map.addSource("followers", {
+    map.addSource(FOLLOWERS_SOURCE_ID, {
       type: "geojson",
-      data,
+      data: followerData,
     });
   } else if ("setData" in source) {
-    (source as mapboxgl.GeoJSONSource).setData(data);
+    (source as mapboxgl.GeoJSONSource).setData(followerData);
   }
 
-  if (!map.getLayer("followers-layer")) {
+  const swarmSource = map.getSource(FOLLOWER_SWARMS_SOURCE_ID);
+  if (!swarmSource) {
+    map.addSource(FOLLOWER_SWARMS_SOURCE_ID, {
+      type: "geojson",
+      data: swarmData,
+    });
+  } else if ("setData" in swarmSource) {
+    (swarmSource as mapboxgl.GeoJSONSource).setData(swarmData);
+  }
+
+  if (!map.getLayer(FOLLOWER_SWARMS_LAYER_ID)) {
+    map.addLayer(
+      {
+        id: FOLLOWER_SWARMS_LAYER_ID,
+        type: "circle",
+        source: FOLLOWER_SWARMS_SOURCE_ID,
+        minzoom: 12,
+        paint: {
+          "circle-radius": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            12, 1,
+            15, 2,
+            18, 3,
+          ],
+          "circle-color": ["get", "color"],
+          "circle-stroke-width": 0,
+          "circle-opacity": [
+            "interpolate",
+            ["linear"],
+            ["get", "happiness"],
+            0, 0.24,
+            1, 0.62,
+          ],
+        },
+      },
+      map.getLayer(FOLLOWERS_LAYER_ID) ? FOLLOWERS_LAYER_ID : undefined,
+    );
+  }
+
+  if (!map.getLayer(FOLLOWERS_LAYER_ID)) {
     map.addLayer({
-      id: "followers-layer",
+      id: FOLLOWERS_LAYER_ID,
       type: "circle",
-      source: "followers",
+      source: FOLLOWERS_SOURCE_ID,
       minzoom: 12,
       paint: {
         "circle-radius": [
@@ -930,7 +1074,17 @@ export class TorontoMapboxScene {
 
   private showRandomThoughtBubble(): void {
     if (!this.map || !this.thoughtBubblePopup) return;
-    const candidates = followersWithPosition(this.lastFollowers);
+    const positionedFollowers = followersWithPosition(
+      this.lastFollowers,
+    );
+    const visibleFollowers = followersInBounds(
+      this.map,
+      positionedFollowers,
+    );
+    const candidates =
+      visibleFollowers.length > 0
+        ? visibleFollowers
+        : positionedFollowers;
     if (candidates.length === 0) {
       this.thoughtBubblePopup.remove();
       this.thoughtBubbleFollowerId = null;
@@ -1049,10 +1203,7 @@ export class TorontoMapboxScene {
       const t = easeInOut(Math.min(raw, 1));
       const interpolated = interpolateFollowers(this.animFromFollowers, this.animToFollowers, t);
       renderedFollowers = interpolated;
-      const source = this.map.getSource("followers");
-      if (source && "setData" in source) {
-        (source as mapboxgl.GeoJSONSource).setData(buildFollowerGeoJSON(renderedFollowers));
-      }
+      syncFollowerSources(this.map, renderedFollowers);
     }
 
     this.syncThoughtBubblePosition(renderedFollowers);
@@ -1083,10 +1234,7 @@ export class TorontoMapboxScene {
     this.lastFollowers = followers;
 
     // Apply immediately so dots appear on first load without waiting for a later tick/update.
-    const source = this.map.getSource("followers");
-    if (source && "setData" in source) {
-      (source as mapboxgl.GeoJSONSource).setData(buildFollowerGeoJSON(followers));
-    }
+    syncFollowerSources(this.map, followers);
 
     if (!this.thoughtBubbleModeEnabled) return;
 

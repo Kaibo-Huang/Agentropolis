@@ -32,6 +32,21 @@ export default function MapView() {
     });
     sceneRef.current = scene;
 
+    const initialState = useSimulationStore.getState();
+    const initialFollowerNameById = new Map(
+      initialState.followers.map((f) => [f.follower_id, f.name]),
+    );
+    scene.setFollowers(initialState.followers);
+    scene.setThoughtBubbleMessages(
+      buildThoughtPool(
+        initialState.posts[0] ?? null,
+        initialFollowerNameById,
+      ),
+    );
+    scene.setThoughtBubbleMode(
+      initialState.thoughtBubbleModeEnabled,
+    );
+
     scene.startRenderLoop(
       () => useSimulationStore.getState().hourOfDay,
     );

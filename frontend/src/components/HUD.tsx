@@ -51,6 +51,16 @@ export default function HUD() {
     };
   }, []);
 
+  useEffect(() => {
+    document.body.classList.toggle(
+      "breaking-news-active",
+      breakingVisible,
+    );
+    return () => {
+      document.body.classList.remove("breaking-news-active");
+    };
+  }, [breakingVisible]);
+
   const queueBreakingNews = (headline: string) => {
     clearNewsTimers();
     setBreakingVisible(false);
@@ -97,18 +107,12 @@ export default function HUD() {
   const popDisplay = `Pop. ${followers.length > 0 ? followers.length.toLocaleString() : "--"}`;
   const breakingLabel = breakingHeadline
     ? `BREAKING NEWS - ${breakingHeadline}`
-    : "BREAKING NEWS - Awaiting bulletin";
+    : "BREAKING NEWS";
   const tickerLine = `${breakingLabel}   //   ${breakingLabel}   //   ${breakingLabel}`;
 
   return (
     <header id="hud">
       <div className="news-header" aria-live="polite">
-        <div className="news-header-top">
-          <span className="news-label">News</span>
-          <span className="news-standby">
-            {breakingVisible ? "Live bulletin" : "Awaiting bulletin"}
-          </span>
-        </div>
         <div className={`news-drop${breakingVisible ? " open" : ""}`}>
           <div className="news-ticker-viewport">
             <p
