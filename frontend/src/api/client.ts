@@ -123,7 +123,7 @@ export class ApiClient {
   getFollowers(
     sessionId: string,
     offset = 0,
-    limit = 200,
+    limit = 1000,
   ): Promise<FollowerListResponse> {
     const params = new URLSearchParams({
       offset: String(offset),

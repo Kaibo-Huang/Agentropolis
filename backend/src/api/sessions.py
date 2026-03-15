@@ -69,7 +69,7 @@ class SessionConfig(BaseModel):
         description="Total number of follower agents to simulate (500–5,000).",
     )
     archetype_count: int = Field(
-        default=20,
+        default=40,
         ge=1,
         le=1_000,
         description="Number of distinct follower archetypes (1–1,000).",

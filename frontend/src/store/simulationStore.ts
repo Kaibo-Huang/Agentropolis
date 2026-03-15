@@ -192,7 +192,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
       });
       const [sessionRes, followerRes, postRes] = await Promise.all([
         api.getSession(session.session_id),
-        api.getFollowers(session.session_id, 0, 200),
+        api.getFollowers(session.session_id, 0, 1000),
         api.getPosts(session.session_id, 0, 20),
       ]);
 
@@ -268,7 +268,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
 
         // 4. Fetch initial data in parallel
         const [followerRes, archetypeRes, postRes] = await Promise.all([
-          api.getFollowers(session.session_id, 0, 200),
+          api.getFollowers(session.session_id, 0, 1000),
           api.getArchetypes(session.session_id),
           api.getPosts(session.session_id, 0, 20),
         ]);
@@ -364,7 +364,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
         // Refresh session state + followers + posts in parallel
         const [sessionRes, followerRes, postRes] = await Promise.all([
           api.getSession(session.session_id),
-          api.getFollowers(session.session_id, 0, 200),
+          api.getFollowers(session.session_id, 0, 1000),
           api.getPosts(session.session_id, 0, 20),
         ]);
 
@@ -472,7 +472,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
       const followerRes = await api.getFollowers(
         session.session_id,
         0,
-        200,
+        1000,
       );
       set({
         followers: followerRes.followers.map(toMapFollower),
