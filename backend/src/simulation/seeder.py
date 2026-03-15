@@ -31,9 +31,11 @@ from src.db.queries import (
     batch_insert_companies,
     batch_insert_relationships,
 )
-from src.data.toronto_neighborhoods import TORONTO_NEIGHBORHOODS, NEIGHBORHOOD_BOUNDS
+from src.data.toronto_neighborhoods import TORONTO_NEIGHBORHOODS
+from shapely.geometry import Point
 from src.data.toronto_zones import (
     ALL_ZONE_BOUNDS,
+    ALL_CELLS,
     RESIDENTIAL_NEIGHBORHOODS,
     WORK_DISTRICTS,
     NEIGHBORHOOD_NAMES,
@@ -67,28 +69,30 @@ logger = logging.getLogger(__name__)
 
 
 def _random_position(zone_name: str) -> list[float]:
-    """Return a random [lat, lng] within the bounding box for *zone_name*.
+    """Return a random [lat, lng] within the Voronoi cell for *zone_name*.
 
-    Looks up the zone in the new ALL_ZONE_BOUNDS first, then falls back to
-    the legacy NEIGHBORHOOD_BOUNDS for backward compatibility. If neither
-    contains the zone, returns a Downtown Core center position with jitter
-    and logs a warning.
+    Uses rejection sampling: generates random points within the cell's
+    bounding box and checks if they fall inside the polygon. Falls back
+    to the cell centroid after 100 attempts, or to the Downtown Core
+    center if the zone is not found.
     """
-    bounds = ALL_ZONE_BOUNDS.get(zone_name)
-    if bounds is None:
-        # Fallback to legacy bounds
-        bounds = NEIGHBORHOOD_BOUNDS.get(zone_name)
-    if bounds is None:
+    cell = ALL_CELLS.get(zone_name)
+    if cell is None:
         logger.warning(
-            "Zone %r not found in zone bounds; using fallback position", zone_name
+            "Zone %r not found in ALL_CELLS; using fallback position", zone_name
         )
         return [
             _FALLBACK_POSITION[0] + random.uniform(-0.005, 0.005),
             _FALLBACK_POSITION[1] + random.uniform(-0.005, 0.005),
         ]
-    lat = random.uniform(bounds["min_lat"], bounds["max_lat"])
-    lng = random.uniform(bounds["min_lng"], bounds["max_lng"])
-    return [round(lat, 6), round(lng, 6)]
+    b = cell.bounds  # (min_lng, min_lat, max_lng, max_lat)
+    for _ in range(100):
+        lng = random.uniform(b[0], b[2])
+        lat = random.uniform(b[1], b[3])
+        if cell.contains(Point(lng, lat)):
+            return [round(lat, 6), round(lng, 6)]
+    # Fallback: use centroid
+    return [round(cell.centroid.y, 6), round(cell.centroid.x, 6)]
 
 
 def _pick_home_neighborhood(industry: str) -> str:
