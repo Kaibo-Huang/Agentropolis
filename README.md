@@ -1,8 +1,8 @@
-# Agentropolis — Simulate Society With Thousands of AI Agents
+# Agentropolis - Simulate Society With Thousands of AI Agents
 
 ![](thumbnail.png)
 
-Agentropolis is a real-time, multi-agent urban simulation grounded in Toronto geography.  
+Agentropolis is a real-time, multi-multi-agent urban simulation grounded in Toronto geography.  
 The system runs thousands of AI-driven followers, streams tick updates over WebSockets, and renders live behavior on a 3D Mapbox scene.
 
 ## Why This Exists
@@ -11,9 +11,8 @@ Most city simulations are either purely statistical or purely visual.
 Agentropolis combines both:
 
 - Real map topology (Toronto neighborhoods + work districts).
-- Session-scoped synthetic population (archetypes -> followers).
-- LLM-driven intent at group level, rule-based follower dynamics at individual level.
-- Deterministic fallback paths so simulation continues during model failures.
+- LLM-driven intent
+- User-generated situations (arbitrary events)
 
 ## Architecture
 
@@ -129,36 +128,6 @@ Server -> client:
 - `error`
 
 Behavior note: when the last client disconnects, the session is auto-paused.
-
-## Data Model
-
-Primary tables:
-
-- `sessions`
-- `archetypes`
-- `followers`
-- `companies`
-- `relationships`
-- `events`
-- `memories`
-- `posts`
-- `demographics`
-- `locations` (shared reference data)
-
-Most entities are session-scoped with composite keys like `(session_id, follower_id)` and cascade deletion from `sessions`.
-
-## Procedural Avatar System
-
-Followers use either:
-
-- `avatar_seed` (deterministic generation), or
-- `avatar_params` (custom authored avatar)
-
-Avatar fields include skin tone, body type, hair texture/style/color, outfit, outfit color, and accessories.
-
-The same schema powers seeded agents and user-created entrants, so one rendering pipeline handles both.
-
-Reference spec: [docs/PROCEDURAL_AVATAR_SYSTEM.md](docs/PROCEDURAL_AVATAR_SYSTEM.md)
 
 ## Local Development
 
