@@ -5,11 +5,9 @@ import ErrorBoundary from "./ErrorBoundary";
 import HUD from "./HUD";
 import MapContainer from "./MapContainer";
 import Toolkit from "./Toolkit";
-import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { useSimulationStore } from "../store/simulationStore";
 
 export default function SimulationView() {
-  useKeyboardShortcuts();
   const showWelcome = useSimulationStore((s) => s.showWelcome);
 
   // Cleanup on unmount: stop timers, disconnect WebSocket

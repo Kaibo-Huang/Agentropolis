@@ -39,7 +39,6 @@ export default function HUD() {
             onClick={() => tickOnce()}
           >
             Tick +1h
-            <span className="kbd">Space</span>
           </button>
           <button
             type="button"

@@ -94,7 +94,7 @@ reasoning (string, required)
 
 EVENT_PRESET_EXAMPLES: list[dict] = [
     {
-        "narrative": "A severe pandemic outbreak has been declared in Toronto. Hospitals are overwhelmed and the government has issued a stay-at-home order.",
+        "narrative": "A new highly-contagious coronavirus has emerged",
         "effects": {
             "stay_home_rate": 0.80,
             "happiness_delta": -0.15,
@@ -109,7 +109,7 @@ EVENT_PRESET_EXAMPLES: list[dict] = [
         },
     },
     {
-        "narrative": "A major economic crash sends shockwaves through Toronto's financial sector. Markets are in free-fall and protests are forming downtown.",
+        "narrative": "Financial market crash",
         "effects": {
             "stay_home_rate": 0.30,
             "happiness_delta": -0.12,
@@ -124,7 +124,7 @@ EVENT_PRESET_EXAMPLES: list[dict] = [
         },
     },
     {
-        "narrative": "An unexpected economic boom sweeps through Toronto. Companies report record profits and bonuses are flowing.",
+        "narrative": "An unexpected economic boom sweeps through Toronto",
         "effects": {
             "stay_home_rate": None,
             "happiness_delta": 0.10,
@@ -139,7 +139,7 @@ EVENT_PRESET_EXAMPLES: list[dict] = [
         },
     },
     {
-        "narrative": "Toronto erupts in celebration as a massive city festival takes over the waterfront and entertainment district.",
+        "narrative": "Toronto erupts in celebration after the Leafs win the Stanley Cup",
         "effects": {
             "stay_home_rate": None,
             "happiness_delta": 0.10,
