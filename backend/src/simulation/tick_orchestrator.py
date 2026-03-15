@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 import uuid
 from datetime import datetime, timedelta
 
@@ -33,6 +34,25 @@ from src.db.engine import AsyncSessionLocal
 from src.db.models import Archetype
 
 logger = logging.getLogger(__name__)
+
+# In-process cache for location data (static reference table, never changes per tick)
+_location_cache: dict[tuple[str, str | None], list] = {}
+
+
+async def _with_own_session(query_fn, *args, **kwargs):
+    """Run one DB query in a dedicated AsyncSession — safe for asyncio.gather parallelism."""
+    async with AsyncSessionLocal() as db:
+        return await query_fn(db, *args, **kwargs)
+
+
+async def _get_locations_cached(region: str, location_type: str | None = None) -> list:
+    """Return cached location rows; populate from DB on first access per region."""
+    key = (region, location_type)
+    if key not in _location_cache:
+        locs = await _with_own_session(queries.get_locations_by_region, region, location_type)
+        _location_cache[key] = locs
+    return _location_cache[key]
+
 
 MAX_CONCURRENT_ARCHETYPES = 10
 MAX_LLM_RETRIES = 3
@@ -139,6 +159,64 @@ async def run_hourly_tick(
     }
 
 
+async def _prefetch_archetype_context(
+    session_id: uuid.UUID,
+    archetype: Archetype,
+    current_time: datetime,
+    target_time: datetime,
+    tick_events: list,
+) -> tuple[dict, list]:
+    """Pre-fetch context and followers in parallel, each query in its own session.
+
+    Using asyncio.gather on a single AsyncSession is unsafe (asyncpg is
+    single-channel; concurrent execute() calls cause _connection_for_bind
+    state errors on exception). Each query gets its own AsyncSession so they
+    run truly in parallel — read time drops from ~6 x RTT to ~1 x RTT.
+
+    Locations come from an in-process cache (static reference data).
+    """
+    home = getattr(archetype, "home_neighborhood", None) or archetype.region
+    work = getattr(archetype, "work_district", None) or archetype.region
+    next_tick_time = target_time + timedelta(hours=1)
+
+    (
+        memories,
+        follower_stats,
+        relationships,
+        followers,
+        work_locations,
+        home_locations,
+    ) = await asyncio.gather(
+        _with_own_session(queries.get_recent_memories, session_id, archetype.archetype_id, 5),
+        _with_own_session(queries.get_follower_stats, session_id, archetype.archetype_id),
+        _with_own_session(queries.get_relationship_summary, session_id, archetype.archetype_id),
+        _with_own_session(queries.get_followers_by_archetype, session_id, archetype.archetype_id),
+        _get_locations_cached(work, None),
+        _get_locations_cached(home, None),
+    )
+
+    return {
+        "current_time": current_time.isoformat(),
+        "actions_finish_at": current_time.isoformat(),
+        "next_tick_time": next_tick_time.isoformat(),
+        "events": [e.event_prompt for e in tick_events],
+        "recent_memories": [
+            {"action": m.action_type, "duration": m.duration, "thinking": m.thinking}
+            for m in memories
+        ],
+        "follower_stats": {
+            k: round(float(v), 2) if v is not None else None
+            for k, v in follower_stats.items()
+        },
+        "work_locations": [loc.name for loc in work_locations[:5]],
+        "home_locations": [loc.name for loc in home_locations[:5]],
+        "relationships": {
+            k: round(float(v), 2) if v is not None else None
+            for k, v in relationships.items()
+        },
+    }, followers
+
+
 async def _process_single_archetype(
     session_id: uuid.UUID,
     archetype: Archetype,
@@ -152,22 +230,56 @@ async def _process_single_archetype(
     Runs within its own database session/transaction. On commit failure the
     entire archetype tick is lost, but the simulation continues.
     """
-    async with AsyncSessionLocal() as db:
-        # ------------------------------------------------------------------
-        # 1. Get archetype response from LLM (with retry + fallback)
-        # ------------------------------------------------------------------
-        archetype_response = await _get_archetype_decision(
-            db=db,
-            session_id=session_id,
-            archetype=archetype,
-            current_time=current_time,
-            target_time=target_time,
-            tick_number=tick_number,
-        )
+    arch_id = archetype.archetype_id
+    tick_events: list = []  # populated by event system when available
 
-        # ------------------------------------------------------------------
-        # 2. Persist memories (race-safe ID allocation)
-        # ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # 1. Pre-fetch context + followers in parallel (each query own session)
+    # ------------------------------------------------------------------
+    t = time.perf_counter()
+    try:
+        prefetched_context, followers = await _prefetch_archetype_context(
+            session_id, archetype, current_time, target_time, tick_events
+        )
+        read_elapsed = time.perf_counter() - t
+        logger.debug(
+            "arch %d | read %.2fs | %d followers",
+            arch_id, read_elapsed, len(followers),
+        )
+    except Exception as e:
+        read_elapsed = time.perf_counter() - t
+        logger.warning(
+            "arch %d | read FAILED %.2fs: %s — using empty context",
+            arch_id, read_elapsed, e,
+        )
+        prefetched_context = {
+            "current_time": current_time.isoformat(),
+            "next_tick_time": (target_time + timedelta(hours=1)).isoformat(),
+            "recent_memories": [],
+            "follower_stats": {},
+            "relationships": {},
+            "events": [ev.event_prompt for ev in tick_events],
+            "home_locations": [],
+            "work_locations": [],
+        }
+        followers = []
+
+    # ------------------------------------------------------------------
+    # 2. Get archetype response from LLM (with retry + fallback)
+    # ------------------------------------------------------------------
+    archetype_response = await _get_archetype_decision(
+        session_id=session_id,
+        archetype=archetype,
+        current_time=current_time,
+        target_time=target_time,
+        tick_number=tick_number,
+        prefetched_context=prefetched_context,
+    )
+
+    # ------------------------------------------------------------------
+    # 3. Persist memories, generate follower variations, and write updates
+    # ------------------------------------------------------------------
+    async with AsyncSessionLocal() as db:
         next_memory_id = await id_alloc.allocate_memory_ids(
             len(archetype_response.actions)
         )
@@ -177,7 +289,7 @@ async def _process_single_archetype(
                 {
                     "session_id": session_id,
                     "memory_id": next_memory_id + i,
-                    "archetype_id": archetype.archetype_id,
+                    "archetype_id": arch_id,
                     "virtual_time": target_time,
                     "action_type": action.action_type,
                     "action_params": action.action_params.model_dump(),
@@ -186,15 +298,7 @@ async def _process_single_archetype(
                 }
             )
 
-        # ------------------------------------------------------------------
-        # 3. Get followers and generate variations IN PARALLEL with memory persist
-        # ------------------------------------------------------------------
-        followers = await queries.get_followers_by_archetype(
-            db, session_id, archetype.archetype_id
-        )
-
         if followers:
-            # Run memory persist and follower variation concurrently
             async def persist_memories():
                 await queries.batch_insert_memories(db, memories_data)
 
@@ -214,11 +318,9 @@ async def _process_single_archetype(
                 gen_variations(),
             )
 
-            # 4. Apply follower updates
             if follower_updates:
                 await queries.batch_update_followers(db, follower_updates)
 
-            # 5. Batch-create posts
             if new_posts:
                 await queries.batch_insert_posts(db, new_posts)
         else:
@@ -227,19 +329,19 @@ async def _process_single_archetype(
         await db.commit()
 
     return {
-        "archetype_id": archetype.archetype_id,
+        "archetype_id": arch_id,
         "actions": len(archetype_response.actions),
         "followers_updated": len(followers) if followers else 0,
     }
 
 
 async def _get_archetype_decision(
-    db: AsyncSession,
     session_id: uuid.UUID,
     archetype: Archetype,
     current_time: datetime,
     target_time: datetime,
     tick_number: int,
+    prefetched_context: dict | None = None,
 ) -> ArchetypeResponse:
     """Get archetype decision with retry and deterministic fallback.
 
@@ -251,10 +353,6 @@ async def _get_archetype_decision(
     """
     agent = build_archetype_agent(archetype)
 
-    # Calculate time context
-    actions_finish_at = current_time  # simplified: previous actions already finished
-    next_tick_time = target_time + timedelta(hours=1)
-
     for attempt in range(MAX_LLM_RETRIES):
         try:
             with rt.Session(
@@ -265,10 +363,8 @@ async def _get_archetype_decision(
                     "region": archetype.region,
                     "home_neighborhood": getattr(archetype, "home_neighborhood", None) or archetype.region,
                     "work_district": getattr(archetype, "work_district", None) or archetype.region,
-                    "db_session": db,
                     "virtual_time": current_time.isoformat(),
-                    "actions_finish_at": actions_finish_at.isoformat(),
-                    "next_tick_time": next_tick_time.isoformat(),
+                    "prefetched_context": prefetched_context or {},
                 },
                 timeout=30.0,
                 save_state=False,
