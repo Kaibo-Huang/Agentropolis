@@ -15,7 +15,11 @@ export default function WelcomeScreen() {
   return (
     <div className={`welcome-screen${showWelcome ? "" : " hidden"}`}>
       <div className="welcome-content">
-        <h1 className="welcome-title">Agentropolis</h1>
+        <img
+          src="/logo.svg"
+          alt="Agentropolis"
+          className="welcome-logo"
+        />
         <p className="welcome-tagline">
           A living city simulation. Watch AI agents move through Toronto — run
           time, create your avatar, and inject events.
