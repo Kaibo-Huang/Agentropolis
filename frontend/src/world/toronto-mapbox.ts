@@ -4,7 +4,6 @@
  * Set VITE_MAPBOX_ACCESS_TOKEN in .env for the map to load.
  */
 import mapboxgl from "mapbox-gl";
-import "mapbox-gl/dist/mapbox-gl.css";
 import type { LngLat } from "../api/types.js";
 
 /** Resolved avatar params for rendering (from seed or custom). */
@@ -32,15 +31,43 @@ export interface MapFollower {
 /** Hex colors for building height gradient (low → high). Default: warm to cool. */
 export type BuildingColorPalette = readonly [string, string, ...string[]];
 
+const MAPBOX_STYLE = "mapbox://styles/danielp1231231/cmmr3ha5d003q01s4gvpsagc0";
+
 export interface TorontoMapboxOptions {
   container: HTMLElement;
   onResize?: () => void;
   /** Colors for 3D buildings by height (low to high). 2–5 hex colors recommended. */
   buildingColors?: BuildingColorPalette;
+  /** True when landing page is shown first: start at Earth view for zoom-in. */
+  landingFirstView?: boolean;
 }
 
 // Toronto downtown
 const TORONTO_CENTER: [number, number] = [-79.38175019453755, 43.64369424043282];
+
+// Landing route: 88 Queens Quay West → CN Tower → return loop (different path)
+// Coordinates: 88 Queens Quay W ≈ [-79.3787, 43.64085], CN Tower ≈ [-79.38705, 43.64257]
+export interface LandingRouteKeyframe {
+  lng: number;
+  lat: number;
+  bearing: number; // degrees, 0 = north, 90 = east
+}
+const LANDING_ROUTE: LandingRouteKeyframe[] = [
+  { lng: -79.3787, lat: 43.64085, bearing: 285 },   // 88 Queens Quay W, looking west
+  { lng: -79.381, lat: 43.641, bearing: 290 },
+  { lng: -79.3835, lat: 43.6414, bearing: 295 },
+  { lng: -79.386, lat: 43.6422, bearing: 300 },
+  { lng: -79.38705, lat: 43.64257, bearing: 0 },    // CN Tower base, looking north
+  // Return loop (east then south along different streets)
+  { lng: -79.3862, lat: 43.6432, bearing: 65 },
+  { lng: -79.384, lat: 43.6435, bearing: 90 },
+  { lng: -79.381, lat: 43.643, bearing: 120 },
+  { lng: -79.3795, lat: 43.6418, bearing: 160 },
+  { lng: -79.3787, lat: 43.64085, bearing: 285 },   // back to start
+];
+const LANDING_ROUTE_DURATION_MS = 45000; // full loop
+const LANDING_ZOOM = 17.4;
+const LANDING_PITCH = 82;
 
 /** Zoom step per click (default Mapbox is 1; smaller = less powerful). */
 const ZOOM_DELTA = 0.45;
@@ -106,144 +133,184 @@ const DEFAULT_BUILDING_PALETTE: BuildingColorPalette = [
   "#DBE0DC", // mauve
 ];
 
-// ── Residential Neighborhoods (8) ──
-// 100% tiling of viewable land area. Southern edges follow approx shoreline.
-// Grid: 4 cols (Spadina, Yonge, Parliament) × 2 rows (Queen St).
-const RESIDENTIAL_ZONES: Array<{ name: string; color: string; polygon: GeoJSON.Polygon }> = [
-  {
-    name: "Liberty Village / Exhibition",
-    color: "#10b981",
-    polygon: { type: "Polygon", coordinates: [[
-      [-79.420, 43.636], [-79.408, 43.635], [-79.397, 43.636],
-      [-79.397, 43.652], [-79.420, 43.652], [-79.420, 43.636],
-    ]] },
-  },
-  {
-    name: "Queen West / Trinity-Bellwoods",
-    color: "#f59e0b",
-    polygon: { type: "Polygon", coordinates: [[
-      [-79.420, 43.652], [-79.397, 43.652],
-      [-79.397, 43.690], [-79.420, 43.690], [-79.420, 43.652],
-    ]] },
-  },
-  {
-    name: "Entertainment / Harbourfront",
-    color: "#3b82f6",
-    polygon: { type: "Polygon", coordinates: [[
-      [-79.397, 43.637], [-79.390, 43.636], [-79.383, 43.637],
-      [-79.383, 43.652], [-79.397, 43.652], [-79.397, 43.637],
-    ]] },
-  },
-  {
-    name: "Chinatown / Kensington",
-    color: "#ef4444",
-    polygon: { type: "Polygon", coordinates: [[
-      [-79.397, 43.652], [-79.383, 43.652],
-      [-79.383, 43.690], [-79.397, 43.690], [-79.397, 43.652],
-    ]] },
-  },
-  {
-    name: "Financial / St. Lawrence",
-    color: "#22c55e",
-    polygon: { type: "Polygon", coordinates: [[
-      [-79.383, 43.638], [-79.375, 43.637], [-79.363, 43.638],
-      [-79.363, 43.652], [-79.383, 43.652], [-79.383, 43.638],
-    ]] },
-  },
-  {
-    name: "Downtown Yonge / Church-Wellesley",
-    color: "#a855f7",
-    polygon: { type: "Polygon", coordinates: [[
-      [-79.383, 43.652], [-79.363, 43.652],
-      [-79.363, 43.690], [-79.383, 43.690], [-79.383, 43.652],
-    ]] },
-  },
-  {
-    name: "Corktown / Distillery",
-    color: "#f97316",
-    polygon: { type: "Polygon", coordinates: [[
-      [-79.363, 43.641], [-79.350, 43.642], [-79.340, 43.644],
-      [-79.320, 43.648], [-79.320, 43.652], [-79.363, 43.652], [-79.363, 43.641],
-    ]] },
-  },
-  {
-    name: "Cabbagetown / Regent Park",
-    color: "#06b6d4",
-    polygon: { type: "Polygon", coordinates: [[
-      [-79.363, 43.652], [-79.320, 43.652],
-      [-79.320, 43.690], [-79.363, 43.690], [-79.363, 43.652],
-    ]] },
-  },
+// ── Voronoi zone computation ──
+// Zones are computed from seed points using Delaunay/Voronoi tessellation,
+// then clipped to a land polygon that follows the Toronto shoreline.
+// This produces organic, natural-looking boundaries that tile all visible land.
+
+import { Delaunay } from "d3-delaunay";
+
+// Seed points for residential neighborhoods (same as backend)
+const RESIDENTIAL_SEEDS = [
+  { name: "Liberty Village / Exhibition",      lng: -79.411, lat: 43.640, color: "#10b981" },
+  { name: "Queen West / Trinity-Bellwoods",    lng: -79.416, lat: 43.670, color: "#f59e0b" },
+  { name: "Entertainment / Harbourfront",      lng: -79.390, lat: 43.643, color: "#3b82f6" },
+  { name: "Chinatown / Kensington",            lng: -79.392, lat: 43.668, color: "#ef4444" },
+  { name: "Financial / St. Lawrence",          lng: -79.373, lat: 43.645, color: "#22c55e" },
+  { name: "Downtown Yonge / Church-Wellesley", lng: -79.373, lat: 43.668, color: "#a855f7" },
+  { name: "Corktown / Distillery",             lng: -79.348, lat: 43.650, color: "#f97316" },
+  { name: "Cabbagetown / Regent Park",         lng: -79.348, lat: 43.670, color: "#06b6d4" },
 ];
 
-// ── Work Districts (8) ──
-// Focused employment clusters; do NOT need to tile 100%.
-const WORK_ZONES: Array<{ name: string; color: string; polygon: GeoJSON.Polygon }> = [
-  {
-    name: "Financial District",
-    color: "#2563eb",
-    polygon: { type: "Polygon", coordinates: [[
-      [-79.387, 43.644], [-79.374, 43.644],
-      [-79.374, 43.653], [-79.387, 43.653], [-79.387, 43.644],
-    ]] },
-  },
-  {
-    name: "Entertainment District",
-    color: "#7c3aed",
-    polygon: { type: "Polygon", coordinates: [[
-      [-79.400, 43.642], [-79.386, 43.642],
-      [-79.386, 43.651], [-79.400, 43.651], [-79.400, 43.642],
-    ]] },
-  },
-  {
-    name: "Tech Corridor",
-    color: "#0891b2",
-    polygon: { type: "Polygon", coordinates: [[
-      [-79.420, 43.636], [-79.405, 43.636],
-      [-79.405, 43.645], [-79.420, 43.645], [-79.420, 43.636],
-    ]] },
-  },
-  {
-    name: "UofT District",
-    color: "#1d4ed8",
-    polygon: { type: "Polygon", coordinates: [[
-      [-79.401, 43.658], [-79.388, 43.658],
-      [-79.388, 43.669], [-79.401, 43.669], [-79.401, 43.658],
-    ]] },
-  },
-  {
-    name: "TMU District",
-    color: "#0369a1",
-    polygon: { type: "Polygon", coordinates: [[
-      [-79.385, 43.654], [-79.375, 43.654],
-      [-79.375, 43.664], [-79.385, 43.664], [-79.385, 43.654],
-    ]] },
-  },
-  {
-    name: "Government District",
-    color: "#b91c1c",
-    polygon: { type: "Polygon", coordinates: [[
-      [-79.396, 43.652], [-79.383, 43.652],
-      [-79.383, 43.666], [-79.396, 43.666], [-79.396, 43.652],
-    ]] },
-  },
-  {
-    name: "Hospital Row",
-    color: "#dc2626",
-    polygon: { type: "Polygon", coordinates: [[
-      [-79.393, 43.655], [-79.383, 43.655],
-      [-79.383, 43.668], [-79.393, 43.668], [-79.393, 43.655],
-    ]] },
-  },
-  {
-    name: "CNE / Exhibition Place",
-    color: "#ca8a04",
-    polygon: { type: "Polygon", coordinates: [[
-      [-79.420, 43.633], [-79.405, 43.633],
-      [-79.405, 43.639], [-79.420, 43.639], [-79.420, 43.633],
-    ]] },
-  },
+// Seed points for work districts (same as backend)
+// bounds = [min_lng, min_lat, max_lng, max_lat] from original rectangles on main
+const WORK_SEEDS = [
+  { name: "Financial District",     lng: -79.3805, lat: 43.6485, color: "#2563eb", bounds: [-79.387, 43.644, -79.374, 43.653] as const },
+  { name: "Entertainment District", lng: -79.393,  lat: 43.6465, color: "#7c3aed", bounds: [-79.400, 43.642, -79.386, 43.651] as const },
+  { name: "Tech Corridor",          lng: -79.4125, lat: 43.6405, color: "#0891b2", bounds: [-79.420, 43.636, -79.405, 43.645] as const },
+  { name: "UofT District",          lng: -79.3945, lat: 43.6635, color: "#1d4ed8", bounds: [-79.401, 43.658, -79.388, 43.669] as const },
+  { name: "TMU District",           lng: -79.380,  lat: 43.659,  color: "#0369a1", bounds: [-79.385, 43.654, -79.375, 43.664] as const },
+  { name: "Government District",    lng: -79.3895, lat: 43.659,  color: "#b91c1c", bounds: [-79.396, 43.652, -79.383, 43.666] as const },
+  { name: "Hospital Row",           lng: -79.388,  lat: 43.6615, color: "#dc2626", bounds: [-79.393, 43.655, -79.383, 43.668] as const },
+  { name: "CNE / Exhibition Place", lng: -79.4125, lat: 43.636,  color: "#ca8a04", bounds: [-79.420, 43.633, -79.405, 43.639] as const },
 ];
+const WORK_BUFFER = 0.003; // ~300m buffer around original bounds
+
+// Land polygon: extended clip boundary with Toronto shoreline on south edge.
+// Covers full visible viewport at minZoom 13 (well beyond maxBounds).
+// MUST be counter-clockwise for Sutherland-Hodgman clipping (isInside test).
+const LAND_POLYGON: [number, number][] = [
+  // Start NW, go CCW: west edge down, shoreline west-to-east, east edge up, top edge west
+  // Extended to cover full viewport at zoom 13 with pitch on large screens
+  [-79.55, 43.75],
+  [-79.55, 43.628],    // SW: far west (Humber Bay / Mimico)
+  // Shoreline waypoints (west to east) — refined to track actual waterfront
+  [-79.45, 43.630],    // Humber Bay east
+  [-79.435, 43.631],   // Sunnyside area
+  [-79.425, 43.631],   // Exhibition Place west / Marilyn Bell Park
+  [-79.418, 43.630],   // BMO Field / Exhibition Place south edge
+  [-79.412, 43.631],   // Ontario Place / Budweiser Stage
+  [-79.407, 43.632],   // Stadium Rd / Fort York approach
+  [-79.402, 43.633],   // Bathurst Quay / Portland slip
+  [-79.398, 43.634],   // Music Garden
+  [-79.395, 43.635],   // Spadina Quay / HTO Park
+  [-79.389, 43.636],   // Rees St slip
+  [-79.383, 43.637],   // York Quay / Harbourfront Centre
+  [-79.378, 43.637],   // York / Simcoe slip
+  [-79.373, 43.638],   // Yonge Quay / Jack Layton Ferry Terminal
+  [-79.368, 43.638],   // Jarvis / Queens Quay
+  [-79.363, 43.639],   // Jarvis slip
+  [-79.358, 43.640],   // Parliament slip
+  [-79.350, 43.641],   // Sugar Beach / Sherbourne Common
+  [-79.340, 43.644],   // Keating Channel / Villiers Island
+  [-79.330, 43.646],   // Cherry Beach approach
+  [-79.30, 43.648],    // East Bayfront / Port Lands
+  // East edge up to NE
+  [-79.24, 43.648],
+  [-79.24, 43.75],
+  // Close
+  [-79.55, 43.75],
+];
+
+// Voronoi bounding box (must cover LAND_POLYGON entirely)
+const VORONOI_BOUNDS: [number, number, number, number] = [-79.55, 43.62, -79.24, 43.75];
+
+/**
+ * Sutherland-Hodgman polygon clipping algorithm.
+ * Clips `subject` polygon against `clip` polygon.
+ * Both are arrays of [x, y] coordinate pairs (assumed closed: last != first is ok).
+ */
+function clipPolygon(
+  subject: [number, number][],
+  clip: [number, number][],
+): [number, number][] {
+  let output = subject.slice();
+  for (let i = 0; i < clip.length - 1; i++) {
+    if (output.length === 0) return [];
+    const edgeStart = clip[i];
+    const edgeEnd = clip[i + 1];
+    const input = output;
+    output = [];
+    for (let j = 0; j < input.length; j++) {
+      const current = input[j];
+      const prev = input[(j + input.length - 1) % input.length];
+      const currInside = isInside(current, edgeStart, edgeEnd);
+      const prevInside = isInside(prev, edgeStart, edgeEnd);
+      if (currInside) {
+        if (!prevInside) {
+          output.push(intersect(prev, current, edgeStart, edgeEnd));
+        }
+        output.push(current);
+      } else if (prevInside) {
+        output.push(intersect(prev, current, edgeStart, edgeEnd));
+      }
+    }
+  }
+  return output;
+}
+
+function isInside(p: [number, number], a: [number, number], b: [number, number]): boolean {
+  return (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]) >= 0;
+}
+
+function intersect(
+  a: [number, number], b: [number, number],
+  c: [number, number], d: [number, number],
+): [number, number] {
+  const a1 = b[1] - a[1], b1 = a[0] - b[0], c1 = a1 * a[0] + b1 * a[1];
+  const a2 = d[1] - c[1], b2 = c[0] - d[0], c2 = a2 * c[0] + b2 * c[1];
+  const det = a1 * b2 - a2 * b1;
+  return [(c1 * b2 - c2 * b1) / det, (a1 * c2 - a2 * c1) / det];
+}
+
+/**
+ * Compute Voronoi zones from seed points, clipped to the land polygon.
+ */
+function computeVoronoiZones(
+  seeds: Array<{ name: string; lng: number; lat: number; color: string }>,
+): Array<{ name: string; color: string; polygon: GeoJSON.Polygon }> {
+  const delaunay = Delaunay.from(seeds, s => s.lng, s => s.lat);
+  const voronoi = delaunay.voronoi(VORONOI_BOUNDS);
+  return seeds.map((seed, i) => {
+    const rawCell = voronoi.cellPolygon(i);
+    // rawCell is closed: [[x,y], ..., [x,y]] where first == last
+    const clipped = clipPolygon(rawCell as [number, number][], LAND_POLYGON);
+    // Close the polygon for GeoJSON
+    const coords = clipped.slice();
+    if (coords.length > 0 && (coords[0][0] !== coords[coords.length - 1][0] || coords[0][1] !== coords[coords.length - 1][1])) {
+      coords.push(coords[0]);
+    }
+    return {
+      name: seed.name,
+      color: seed.color,
+      polygon: { type: "Polygon" as const, coordinates: [coords] },
+    };
+  });
+}
+
+// ── Residential Neighborhoods (8) ──
+// Voronoi cells from seed points, clipped to land polygon (shoreline-aware).
+const RESIDENTIAL_ZONES = computeVoronoiZones(RESIDENTIAL_SEEDS);
+
+// ── Work Districts (8) ──
+// Voronoi cells clipped to both land polygon AND local envelope (buffered original bounds).
+// This gives organic Voronoi edges between neighboring districts without expanding to fill the map.
+const WORK_ZONES = (() => {
+  const delaunay = Delaunay.from(WORK_SEEDS, s => s.lng, s => s.lat);
+  const voronoi = delaunay.voronoi(VORONOI_BOUNDS);
+  return WORK_SEEDS.map((seed, i) => {
+    const rawCell = voronoi.cellPolygon(i) as [number, number][];
+    // Clip to land polygon (shoreline), then to local envelope
+    const b = seed.bounds;
+    const localEnvelope: [number, number][] = [
+      [b[0] - WORK_BUFFER, b[1] - WORK_BUFFER],
+      [b[2] + WORK_BUFFER, b[1] - WORK_BUFFER],
+      [b[2] + WORK_BUFFER, b[3] + WORK_BUFFER],
+      [b[0] - WORK_BUFFER, b[3] + WORK_BUFFER],
+      [b[0] - WORK_BUFFER, b[1] - WORK_BUFFER],
+    ];
+    const clipped = clipPolygon(clipPolygon(rawCell, LAND_POLYGON), localEnvelope);
+    const coords = clipped.slice();
+    if (coords.length > 0 && (coords[0][0] !== coords[coords.length - 1][0] || coords[0][1] !== coords[coords.length - 1][1])) {
+      coords.push(coords[0]);
+    }
+    return {
+      name: seed.name,
+      color: seed.color,
+      polygon: { type: "Polygon" as const, coordinates: [coords] },
+    };
+  });
+})();
 
 /** Height-based color gradient (for default layer when not in a region). */
 function buildingColorExpression(
@@ -598,19 +665,23 @@ function setup3D(
     },
   });
 
-  map.addLayer(
-    {
-      id: "add-3d-buildings",
-      source: "composite",
-      "source-layer": "building",
-      filter: ["==", "extrude", "true"],
-      type: "fill-extrusion",
-      minzoom: 14,
-      slot: "middle",
-      paint: buildingExtrusionPaint(buildingColorExpression(buildingColors)),
-    },
-    beforeId
-  );
+  // "composite" source only exists in classic Mapbox styles (streets-v12, etc.).
+  // The Standard style has built-in 3D buildings, so skip if source is missing.
+  if (map.getSource("composite")) {
+    map.addLayer(
+      {
+        id: "add-3d-buildings",
+        source: "composite",
+        "source-layer": "building",
+        filter: ["==", "extrude", "true"],
+        type: "fill-extrusion",
+        minzoom: 14,
+        slot: "middle",
+        paint: buildingExtrusionPaint(buildingColorExpression(buildingColors)),
+      },
+      beforeId
+    );
+  }
 }
 
 export class TorontoMapboxScene {
@@ -626,46 +697,56 @@ export class TorontoMapboxScene {
   private onMouseUp: ((e: MouseEvent) => void) | null = null;
   private boundMouseUp: ((e: MouseEvent) => void) | null = null;
   private onWheel: ((e: WheelEvent) => void) | null = null;
+  private onContainerMouseDown: ((e: MouseEvent) => void) | null = null;
   private lastFollowers: MapFollower[] = [];
   private animFromFollowers: MapFollower[] = [];
   private animToFollowers: MapFollower[] = [];
   private animStartTime: number = -1;
   private followerPopup: mapboxgl.Popup | null = null;
+  private pendingFollowers: MapFollower[] | null = null;
+  // Store map event handlers for cleanup
+  private mapHandlers: { event: string; handler: (...args: unknown[]) => void; layer?: string }[] = [];
+  // Landing page: street-level fly-through 88 Queens Quay → CN Tower → back
+  private landingStartTime: number = -1;
+  private isLandingRoute: boolean = false;
+  /** True after the first Earth→Toronto zoom-in has run (only on first launch). */
+  private initialZoomDone: boolean = false;
 
   constructor(options: TorontoMapboxOptions) {
-    const { container, buildingColors } = options;
+    const { container, buildingColors, landingFirstView } = options;
     this.container = container;
     this.buildingColors = buildingColors ?? DEFAULT_BUILDING_PALETTE;
-    const env = (typeof import.meta !== "undefined" && (import.meta as { env?: Record<string, string> }).env) || {};
-    const token = env.VITE_MAPBOX_ACCESS_TOKEN || "";
+    const token = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || "";
 
     if (!token) {
       console.warn(
-        "VITE_MAPBOX_ACCESS_TOKEN not set. Add it to .env to load the Mapbox map."
+        "NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN not set. Add it to .env.local to load the Mapbox map."
       );
       container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#6b7280;font-family:system-ui;">
-        Set VITE_MAPBOX_ACCESS_TOKEN in .env to load the map.
+        Set NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN in .env.local to load the map.
       </div>`;
       return;
     }
 
+    const startAtEarth = landingFirstView === true;
+    const torontoBounds: [[number, number], [number, number]] = [
+      [-79.42, 43.62], // SW: Bathurst & lakeshore
+      [-79.34, 43.69], // NE: just east of DVP & Bloor
+    ];
     this.map = new mapboxgl.Map({
       container,
       accessToken: token,
-      style: "mapbox://styles/mapbox/standard",
+      style: MAPBOX_STYLE,
       center: TORONTO_CENTER,
-      zoom: 15.2,
-      minZoom: 13,
+      zoom: startAtEarth ? 2 : 15.2,
+      minZoom: 2,
       maxZoom: 18,
-      pitch: 40,
+      pitch: startAtEarth ? 0 : 40,
       maxPitch: 60,
-      bearing: -20,
+      bearing: startAtEarth ? 0 : -20,
       antialias: true,
-      // Downtown Toronto core: Bathurst → DVP, waterfront → Bloor
-      maxBounds: [
-        [-79.42, 43.62], // SW: Bathurst & lakeshore
-        [-79.34, 43.69], // NE: just east of DVP & Bloor
-      ],
+      // Only restrict to downtown when not in landing (Earth view needs no bounds)
+      ...(startAtEarth ? {} : { maxBounds: torontoBounds }),
     });
 
     this.map.addControl(new GentleZoomControl(), "bottom-right");
@@ -724,14 +805,15 @@ export class TorontoMapboxScene {
     };
 
     // Manual drag-to-pan: bypass whatever is blocking Mapbox's internal dragPan.
-    container.addEventListener("mousedown", (e) => {
+    this.onContainerMouseDown = (e: MouseEvent) => {
       if (e.button !== 0) return;
       // Don't intercept clicks on Mapbox controls (zoom buttons, etc.)
       if ((e.target as HTMLElement).closest(".mapboxgl-ctrl")) return;
       this.dragPos = { x: e.clientX, y: e.clientY };
       this.userInteracting = true;
       container.style.cursor = "grabbing";
-    });
+    };
+    container.addEventListener("mousedown", this.onContainerMouseDown);
 
     const BOUNDS_W = -79.38, BOUNDS_E = -79.37, BOUNDS_S = 43.63, BOUNDS_N = 43.66;
     const clampCenter = () => {
@@ -785,12 +867,14 @@ export class TorontoMapboxScene {
       }
     };
 
-    this.map.on("mouseenter", "followers-layer", () => {
-      this.map!.getCanvas().style.cursor = "pointer";
-    });
-    this.map.on("mouseleave", "followers-layer", () => {
-      this.map!.getCanvas().style.cursor = "";
-    });
+    const onMouseEnterFollowers = () => {
+      if (this.map) this.map.getCanvas().style.cursor = "pointer";
+    };
+    const onMouseLeaveFollowers = () => {
+      if (this.map) this.map.getCanvas().style.cursor = "";
+    };
+    this.map.on("mouseenter", "followers-layer", onMouseEnterFollowers);
+    this.map.on("mouseleave", "followers-layer", onMouseLeaveFollowers);
 
     this.boundMouseUp = (e: MouseEvent) => this.onMouseUp?.(e);
     window.addEventListener("mousemove", this.onMouseMove!);
@@ -806,6 +890,18 @@ export class TorontoMapboxScene {
     this.map.on("rotateend", endInteract);
     this.map.on("zoomstart", startInteract);
     this.map.on("zoomend", endInteract);
+
+    // Store handler references for dispose() cleanup
+    this.mapHandlers = [
+      { event: "mouseenter", handler: onMouseEnterFollowers, layer: "followers-layer" },
+      { event: "mouseleave", handler: onMouseLeaveFollowers, layer: "followers-layer" },
+      { event: "dragstart", handler: startInteract },
+      { event: "dragend", handler: endInteract },
+      { event: "rotatestart", handler: startInteract },
+      { event: "rotateend", handler: endInteract },
+      { event: "zoomstart", handler: startInteract },
+      { event: "zoomend", handler: endInteract },
+    ];
 
     // Disable Mapbox's built-in scroll zoom — it drifts north on pitched maps
     // because it zooms toward the raycasted ground point under the cursor.
@@ -837,11 +933,45 @@ export class TorontoMapboxScene {
       if (!this.map) return;
       setup3D(this.map, this.buildingColors);
       setupFollowerLayer(this.map, this.lastFollowers);
+      // Apply any followers queued before style was ready
+      if (this.pendingFollowers) {
+        const pending = this.pendingFollowers;
+        this.pendingFollowers = null;
+        this.setFollowers(pending);
+      }
     });
   }
 
   updateState(hourOfDay: number): void {
     if (!this.map) return;
+
+    // Landing route: drive camera along street-level path when welcome screen is shown
+    if (this.isLandingRoute && this.landingStartTime >= 0) {
+      const elapsed = performance.now() - this.landingStartTime;
+      const loopTime = elapsed % LANDING_ROUTE_DURATION_MS;
+      const t = loopTime / LANDING_ROUTE_DURATION_MS;
+      const n = LANDING_ROUTE.length - 1;
+      const seg = Math.min(Math.floor(t * n), n - 1);
+      const segT = (t * n) - seg;
+      const a = LANDING_ROUTE[seg];
+      const b = LANDING_ROUTE[seg + 1];
+      const lng = a.lng + (b.lng - a.lng) * segT;
+      const lat = a.lat + (b.lat - a.lat) * segT;
+      let bearing = a.bearing + (b.bearing - a.bearing) * segT;
+      if (Math.abs(b.bearing - a.bearing) > 180) {
+        if (b.bearing > a.bearing) bearing = a.bearing - (360 - b.bearing + a.bearing) * segT;
+        else bearing = a.bearing + (360 - a.bearing + b.bearing) * segT;
+      }
+      bearing = ((bearing % 360) + 360) % 360;
+      this.map.jumpTo({
+        center: [lng, lat],
+        zoom: LANDING_ZOOM,
+        pitch: LANDING_PITCH,
+        bearing,
+      });
+      return;
+    }
+
     const timeOfDay = hourOfDay / 24;
     const isNight = timeOfDay < 0.25 || timeOfDay > 0.75;
     const mode = isNight ? "dark" : "light";
@@ -856,7 +986,7 @@ export class TorontoMapboxScene {
           range: [0.6, 6.0],
           "space-color": "#000010",
           "star-intensity": 0.6,
-        } as any);
+        });
       } else {
         this.map.setFog({
           color: "#e2e8f0",
@@ -864,7 +994,7 @@ export class TorontoMapboxScene {
           range: [0.9, 8.0],
           "space-color": "#0b1120",
           "star-intensity": 0.0,
-        } as any);
+        });
       }
     }
 
@@ -882,6 +1012,13 @@ export class TorontoMapboxScene {
 
   setFollowers(followers: MapFollower[]): void {
     if (followers === this.lastFollowers) return;
+
+    // Guard: if map style hasn't loaded yet, queue for later
+    if (!this.map || !this.map.isStyleLoaded()) {
+      this.pendingFollowers = followers;
+      return;
+    }
+
     // Snapshot current display positions as the animation start
     this.animFromFollowers = this.animToFollowers.length > 0
       ? interpolateFollowers(
@@ -895,7 +1032,60 @@ export class TorontoMapboxScene {
     this.lastFollowers = followers;
   }
 
+  /** Start street-level fly-through from 88 Queens Quay → CN Tower → back (landing page). */
+  startLandingRoute(): void {
+    this.isLandingRoute = true;
+    if (!this.map) return;
+
+    const k = LANDING_ROUTE[0];
+    const dest = { center: [k.lng, k.lat] as [number, number], zoom: LANDING_ZOOM, pitch: LANDING_PITCH, bearing: k.bearing };
+
+    if (!this.initialZoomDone) {
+      this.initialZoomDone = true;
+      const zoomInFromEarth = () => {
+        this.map!.flyTo({
+          ...dest,
+          duration: 4200,
+          essential: true,
+        });
+        this.map!.once("moveend", () => {
+          this.landingStartTime = performance.now();
+        });
+      };
+      if (this.map.getZoom() > 3) {
+        this.map.jumpTo({ center: TORONTO_CENTER, zoom: 2, pitch: 0, bearing: 0 });
+        this.map.once("moveend", zoomInFromEarth);
+      } else {
+        zoomInFromEarth();
+      }
+      return;
+    }
+
+    this.landingStartTime = performance.now();
+    this.map.jumpTo(dest);
+  }
+
+  /** Stop landing route and ease to default simulation view with 3D buildings. */
+  stopLandingRoute(): void {
+    this.isLandingRoute = false;
+    this.landingStartTime = -1;
+    if (this.map) {
+      this.map.setMaxBounds([
+        [-79.42, 43.62],
+        [-79.34, 43.69],
+      ]);
+      this.map.easeTo({
+        center: TORONTO_CENTER,
+        zoom: 15.2,
+        pitch: 40,
+        bearing: -20,
+        duration: 1600,
+      });
+    }
+  }
+
   startRenderLoop(getHourOfDay: () => number): void {
+    if (this.animationId !== 0) return; // prevent double render loops
     const tick = () => {
       this.animationId = requestAnimationFrame(tick);
       this.updateState(getHourOfDay());
@@ -905,16 +1095,45 @@ export class TorontoMapboxScene {
 
   dispose(): void {
     cancelAnimationFrame(this.animationId);
+    this.animationId = 0;
+
+    // Remove window-level listeners
     if (this.onMouseMove) window.removeEventListener("mousemove", this.onMouseMove);
     if (this.boundMouseUp) window.removeEventListener("mouseup", this.boundMouseUp);
-    if (this.onWheel && this.map) {
-      this.map.getContainer().removeEventListener("wheel", this.onWheel);
+
+    // Remove container-level listeners
+    if (this.onWheel) {
+      this.container.removeEventListener("wheel", this.onWheel);
     }
+    if (this.onContainerMouseDown) {
+      this.container.removeEventListener("mousedown", this.onContainerMouseDown);
+    }
+
+    // Remove all map event listeners
+    if (this.map) {
+      for (const { event, handler, layer } of this.mapHandlers) {
+        if (layer) {
+          this.map.off(event, layer, handler as () => void);
+        } else {
+          this.map.off(event, handler as () => void);
+        }
+      }
+    }
+    this.mapHandlers = [];
+
+    // Cleanup popup and map
     this.followerPopup?.remove();
     this.followerPopup = null;
     if (this.map) {
       this.map.remove();
       this.map = null;
     }
+
+    // Nullify handler references
+    this.onMouseMove = null;
+    this.onMouseUp = null;
+    this.boundMouseUp = null;
+    this.onWheel = null;
+    this.onContainerMouseDown = null;
   }
 }

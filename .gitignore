@@ -4,6 +4,7 @@ node_modules/
 # Build output
 dist/
 dist-web/
+.next/
 
 # Environment
 .env
