@@ -4,7 +4,6 @@
  * Set VITE_MAPBOX_ACCESS_TOKEN in .env for the map to load.
  */
 import mapboxgl from "mapbox-gl";
-import "mapbox-gl/dist/mapbox-gl.css";
 import type { LngLat } from "../api/types.js";
 
 /** Resolved avatar params for rendering (from seed or custom). */
@@ -598,19 +597,23 @@ function setup3D(
     },
   });
 
-  map.addLayer(
-    {
-      id: "add-3d-buildings",
-      source: "composite",
-      "source-layer": "building",
-      filter: ["==", "extrude", "true"],
-      type: "fill-extrusion",
-      minzoom: 14,
-      slot: "middle",
-      paint: buildingExtrusionPaint(buildingColorExpression(buildingColors)),
-    },
-    beforeId
-  );
+  // "composite" source only exists in classic Mapbox styles (streets-v12, etc.).
+  // The Standard style has built-in 3D buildings, so skip if source is missing.
+  if (map.getSource("composite")) {
+    map.addLayer(
+      {
+        id: "add-3d-buildings",
+        source: "composite",
+        "source-layer": "building",
+        filter: ["==", "extrude", "true"],
+        type: "fill-extrusion",
+        minzoom: 14,
+        slot: "middle",
+        paint: buildingExtrusionPaint(buildingColorExpression(buildingColors)),
+      },
+      beforeId
+    );
+  }
 }
 
 export class TorontoMapboxScene {
@@ -626,25 +629,28 @@ export class TorontoMapboxScene {
   private onMouseUp: ((e: MouseEvent) => void) | null = null;
   private boundMouseUp: ((e: MouseEvent) => void) | null = null;
   private onWheel: ((e: WheelEvent) => void) | null = null;
+  private onContainerMouseDown: ((e: MouseEvent) => void) | null = null;
   private lastFollowers: MapFollower[] = [];
   private animFromFollowers: MapFollower[] = [];
   private animToFollowers: MapFollower[] = [];
   private animStartTime: number = -1;
   private followerPopup: mapboxgl.Popup | null = null;
+  private pendingFollowers: MapFollower[] | null = null;
+  // Store map event handlers for cleanup
+  private mapHandlers: { event: string; handler: (...args: unknown[]) => void; layer?: string }[] = [];
 
   constructor(options: TorontoMapboxOptions) {
     const { container, buildingColors } = options;
     this.container = container;
     this.buildingColors = buildingColors ?? DEFAULT_BUILDING_PALETTE;
-    const env = (typeof import.meta !== "undefined" && (import.meta as { env?: Record<string, string> }).env) || {};
-    const token = env.VITE_MAPBOX_ACCESS_TOKEN || "";
+    const token = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || "";
 
     if (!token) {
       console.warn(
-        "VITE_MAPBOX_ACCESS_TOKEN not set. Add it to .env to load the Mapbox map."
+        "NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN not set. Add it to .env.local to load the Mapbox map."
       );
       container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#6b7280;font-family:system-ui;">
-        Set VITE_MAPBOX_ACCESS_TOKEN in .env to load the map.
+        Set NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN in .env.local to load the map.
       </div>`;
       return;
     }
@@ -724,14 +730,15 @@ export class TorontoMapboxScene {
     };
 
     // Manual drag-to-pan: bypass whatever is blocking Mapbox's internal dragPan.
-    container.addEventListener("mousedown", (e) => {
+    this.onContainerMouseDown = (e: MouseEvent) => {
       if (e.button !== 0) return;
       // Don't intercept clicks on Mapbox controls (zoom buttons, etc.)
       if ((e.target as HTMLElement).closest(".mapboxgl-ctrl")) return;
       this.dragPos = { x: e.clientX, y: e.clientY };
       this.userInteracting = true;
       container.style.cursor = "grabbing";
-    });
+    };
+    container.addEventListener("mousedown", this.onContainerMouseDown);
 
     const BOUNDS_W = -79.38, BOUNDS_E = -79.37, BOUNDS_S = 43.63, BOUNDS_N = 43.66;
     const clampCenter = () => {
@@ -785,12 +792,14 @@ export class TorontoMapboxScene {
       }
     };
 
-    this.map.on("mouseenter", "followers-layer", () => {
-      this.map!.getCanvas().style.cursor = "pointer";
-    });
-    this.map.on("mouseleave", "followers-layer", () => {
-      this.map!.getCanvas().style.cursor = "";
-    });
+    const onMouseEnterFollowers = () => {
+      if (this.map) this.map.getCanvas().style.cursor = "pointer";
+    };
+    const onMouseLeaveFollowers = () => {
+      if (this.map) this.map.getCanvas().style.cursor = "";
+    };
+    this.map.on("mouseenter", "followers-layer", onMouseEnterFollowers);
+    this.map.on("mouseleave", "followers-layer", onMouseLeaveFollowers);
 
     this.boundMouseUp = (e: MouseEvent) => this.onMouseUp?.(e);
     window.addEventListener("mousemove", this.onMouseMove!);
@@ -806,6 +815,18 @@ export class TorontoMapboxScene {
     this.map.on("rotateend", endInteract);
     this.map.on("zoomstart", startInteract);
     this.map.on("zoomend", endInteract);
+
+    // Store handler references for dispose() cleanup
+    this.mapHandlers = [
+      { event: "mouseenter", handler: onMouseEnterFollowers, layer: "followers-layer" },
+      { event: "mouseleave", handler: onMouseLeaveFollowers, layer: "followers-layer" },
+      { event: "dragstart", handler: startInteract },
+      { event: "dragend", handler: endInteract },
+      { event: "rotatestart", handler: startInteract },
+      { event: "rotateend", handler: endInteract },
+      { event: "zoomstart", handler: startInteract },
+      { event: "zoomend", handler: endInteract },
+    ];
 
     // Disable Mapbox's built-in scroll zoom — it drifts north on pitched maps
     // because it zooms toward the raycasted ground point under the cursor.
@@ -837,6 +858,12 @@ export class TorontoMapboxScene {
       if (!this.map) return;
       setup3D(this.map, this.buildingColors);
       setupFollowerLayer(this.map, this.lastFollowers);
+      // Apply any followers queued before style was ready
+      if (this.pendingFollowers) {
+        const pending = this.pendingFollowers;
+        this.pendingFollowers = null;
+        this.setFollowers(pending);
+      }
     });
   }
 
@@ -856,7 +883,7 @@ export class TorontoMapboxScene {
           range: [0.6, 6.0],
           "space-color": "#000010",
           "star-intensity": 0.6,
-        } as any);
+        });
       } else {
         this.map.setFog({
           color: "#e2e8f0",
@@ -864,7 +891,7 @@ export class TorontoMapboxScene {
           range: [0.9, 8.0],
           "space-color": "#0b1120",
           "star-intensity": 0.0,
-        } as any);
+        });
       }
     }
 
@@ -882,6 +909,13 @@ export class TorontoMapboxScene {
 
   setFollowers(followers: MapFollower[]): void {
     if (followers === this.lastFollowers) return;
+
+    // Guard: if map style hasn't loaded yet, queue for later
+    if (!this.map || !this.map.isStyleLoaded()) {
+      this.pendingFollowers = followers;
+      return;
+    }
+
     // Snapshot current display positions as the animation start
     this.animFromFollowers = this.animToFollowers.length > 0
       ? interpolateFollowers(
@@ -896,6 +930,7 @@ export class TorontoMapboxScene {
   }
 
   startRenderLoop(getHourOfDay: () => number): void {
+    if (this.animationId !== 0) return; // prevent double render loops
     const tick = () => {
       this.animationId = requestAnimationFrame(tick);
       this.updateState(getHourOfDay());
@@ -905,16 +940,45 @@ export class TorontoMapboxScene {
 
   dispose(): void {
     cancelAnimationFrame(this.animationId);
+    this.animationId = 0;
+
+    // Remove window-level listeners
     if (this.onMouseMove) window.removeEventListener("mousemove", this.onMouseMove);
     if (this.boundMouseUp) window.removeEventListener("mouseup", this.boundMouseUp);
-    if (this.onWheel && this.map) {
-      this.map.getContainer().removeEventListener("wheel", this.onWheel);
+
+    // Remove container-level listeners
+    if (this.onWheel) {
+      this.container.removeEventListener("wheel", this.onWheel);
     }
+    if (this.onContainerMouseDown) {
+      this.container.removeEventListener("mousedown", this.onContainerMouseDown);
+    }
+
+    // Remove all map event listeners
+    if (this.map) {
+      for (const { event, handler, layer } of this.mapHandlers) {
+        if (layer) {
+          this.map.off(event, layer, handler as () => void);
+        } else {
+          this.map.off(event, handler as () => void);
+        }
+      }
+    }
+    this.mapHandlers = [];
+
+    // Cleanup popup and map
     this.followerPopup?.remove();
     this.followerPopup = null;
     if (this.map) {
       this.map.remove();
       this.map = null;
     }
+
+    // Nullify handler references
+    this.onMouseMove = null;
+    this.onMouseUp = null;
+    this.boundMouseUp = null;
+    this.onWheel = null;
+    this.onContainerMouseDown = null;
   }
 }
