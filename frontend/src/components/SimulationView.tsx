@@ -12,6 +12,7 @@ import { useSimulationStore } from "../store/simulationStore";
 
 export default function SimulationView() {
   useKeyboardShortcuts();
+  const showWelcome = useSimulationStore((s) => s.showWelcome);
 
   // Cleanup on unmount: stop timers, disconnect WebSocket
   useEffect(() => {
@@ -23,10 +24,14 @@ export default function SimulationView() {
   return (
     <ErrorBoundary>
       <MapContainer />
-      <HUD />
-      <TweetPanel />
-      <EventsSheet />
-      <AvatarSheet />
+      {!showWelcome && (
+        <>
+          <HUD />
+          <TweetPanel />
+          <EventsSheet />
+          <AvatarSheet />
+        </>
+      )}
     </ErrorBoundary>
   );
 }

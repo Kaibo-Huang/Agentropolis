@@ -41,6 +41,30 @@ export interface TorontoMapboxOptions {
 // Toronto downtown
 const TORONTO_CENTER: [number, number] = [-79.38175019453755, 43.64369424043282];
 
+// Landing route: 88 Queens Quay West → CN Tower → return loop (different path)
+// Coordinates: 88 Queens Quay W ≈ [-79.3787, 43.64085], CN Tower ≈ [-79.38705, 43.64257]
+export interface LandingRouteKeyframe {
+  lng: number;
+  lat: number;
+  bearing: number; // degrees, 0 = north, 90 = east
+}
+const LANDING_ROUTE: LandingRouteKeyframe[] = [
+  { lng: -79.3787, lat: 43.64085, bearing: 285 },   // 88 Queens Quay W, looking west
+  { lng: -79.381, lat: 43.641, bearing: 290 },
+  { lng: -79.3835, lat: 43.6414, bearing: 295 },
+  { lng: -79.386, lat: 43.6422, bearing: 300 },
+  { lng: -79.38705, lat: 43.64257, bearing: 0 },    // CN Tower base, looking north
+  // Return loop (east then south along different streets)
+  { lng: -79.3862, lat: 43.6432, bearing: 65 },
+  { lng: -79.384, lat: 43.6435, bearing: 90 },
+  { lng: -79.381, lat: 43.643, bearing: 120 },
+  { lng: -79.3795, lat: 43.6418, bearing: 160 },
+  { lng: -79.3787, lat: 43.64085, bearing: 285 },   // back to start
+];
+const LANDING_ROUTE_DURATION_MS = 45000; // full loop
+const LANDING_ZOOM = 17.4;
+const LANDING_PITCH = 82;
+
 /** Zoom step per click (default Mapbox is 1; smaller = less powerful). */
 const ZOOM_DELTA = 0.45;
 
@@ -678,6 +702,9 @@ export class TorontoMapboxScene {
   private pendingFollowers: MapFollower[] | null = null;
   // Store map event handlers for cleanup
   private mapHandlers: { event: string; handler: (...args: unknown[]) => void; layer?: string }[] = [];
+  // Landing page: street-level fly-through 88 Queens Quay → CN Tower → back
+  private landingStartTime: number = -1;
+  private isLandingRoute: boolean = false;
 
   constructor(options: TorontoMapboxOptions) {
     const { container, buildingColors } = options;
@@ -909,6 +936,34 @@ export class TorontoMapboxScene {
 
   updateState(hourOfDay: number): void {
     if (!this.map) return;
+
+    // Landing route: drive camera along street-level path when welcome screen is shown
+    if (this.isLandingRoute && this.landingStartTime >= 0) {
+      const elapsed = performance.now() - this.landingStartTime;
+      const loopTime = elapsed % LANDING_ROUTE_DURATION_MS;
+      const t = loopTime / LANDING_ROUTE_DURATION_MS;
+      const n = LANDING_ROUTE.length - 1;
+      const seg = Math.min(Math.floor(t * n), n - 1);
+      const segT = (t * n) - seg;
+      const a = LANDING_ROUTE[seg];
+      const b = LANDING_ROUTE[seg + 1];
+      const lng = a.lng + (b.lng - a.lng) * segT;
+      const lat = a.lat + (b.lat - a.lat) * segT;
+      let bearing = a.bearing + (b.bearing - a.bearing) * segT;
+      if (Math.abs(b.bearing - a.bearing) > 180) {
+        if (b.bearing > a.bearing) bearing = a.bearing - (360 - b.bearing + a.bearing) * segT;
+        else bearing = a.bearing + (360 - a.bearing + b.bearing) * segT;
+      }
+      bearing = ((bearing % 360) + 360) % 360;
+      this.map.jumpTo({
+        center: [lng, lat],
+        zoom: LANDING_ZOOM,
+        pitch: LANDING_PITCH,
+        bearing,
+      });
+      return;
+    }
+
     const timeOfDay = hourOfDay / 24;
     const isNight = timeOfDay < 0.25 || timeOfDay > 0.75;
     const mode = isNight ? "dark" : "light";
@@ -967,6 +1022,36 @@ export class TorontoMapboxScene {
     this.animToFollowers = followers;
     this.animStartTime = performance.now();
     this.lastFollowers = followers;
+  }
+
+  /** Start street-level fly-through from 88 Queens Quay → CN Tower → back (landing page). */
+  startLandingRoute(): void {
+    this.isLandingRoute = true;
+    this.landingStartTime = performance.now();
+    if (this.map) {
+      const k = LANDING_ROUTE[0];
+      this.map.jumpTo({
+        center: [k.lng, k.lat],
+        zoom: LANDING_ZOOM,
+        pitch: LANDING_PITCH,
+        bearing: k.bearing,
+      });
+    }
+  }
+
+  /** Stop landing route and ease to default simulation view with 3D buildings. */
+  stopLandingRoute(): void {
+    this.isLandingRoute = false;
+    this.landingStartTime = -1;
+    if (this.map) {
+      this.map.easeTo({
+        center: TORONTO_CENTER,
+        zoom: 15.2,
+        pitch: 40,
+        bearing: -20,
+        duration: 1600,
+      });
+    }
   }
 
   startRenderLoop(getHourOfDay: () => number): void {
