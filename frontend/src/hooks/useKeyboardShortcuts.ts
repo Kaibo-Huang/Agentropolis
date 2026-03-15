@@ -17,7 +17,11 @@ export function useKeyboardShortcuts() {
 
       if ((e.key === "e" || e.key === "E") && !isInput) {
         e.preventDefault();
-        useSimulationStore.getState().toggleEventsSheet();
+        const input = document.getElementById("event-prompt-input");
+        if (input instanceof HTMLInputElement) {
+          input.focus();
+          input.select();
+        }
       }
 
       if ((e.key === "a" || e.key === "A") && !isInput) {

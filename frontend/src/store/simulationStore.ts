@@ -56,8 +56,8 @@ export interface SimulationState {
   hourOfDay: number;
 
   // UI state
-  showEventsSheet: boolean;
   showAvatarSheet: boolean;
+  thoughtBubbleModeEnabled: boolean;
 
   // Actions
   createSession: () => Promise<string>;
@@ -80,8 +80,8 @@ export interface SimulationState {
     },
   ) => Promise<void>;
   disconnect: () => Promise<void>;
-  toggleEventsSheet: () => void;
   toggleAvatarSheet: () => void;
+  setThoughtBubbleModeEnabled: (enabled: boolean) => void;
   log: (msg: string) => void;
 }
 
@@ -138,8 +138,8 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
     posts: [],
     logEntries: [],
     hourOfDay: 8,
-    showEventsSheet: false,
     showAvatarSheet: false,
+    thoughtBubbleModeEnabled: false,
 
     // Actions
     log,
@@ -198,8 +198,8 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
         followers: [],
         archetypes: [],
         posts: [],
-        showEventsSheet: false,
         showAvatarSheet: false,
+        thoughtBubbleModeEnabled: false,
       });
 
       try {
@@ -418,17 +418,17 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
         connectingSessionId: null,
         phase: "idle",
         hourOfDay: 8,
-        showEventsSheet: false,
         showAvatarSheet: false,
+        thoughtBubbleModeEnabled: false,
       });
-    },
-
-    toggleEventsSheet() {
-      set((s) => ({ showEventsSheet: !s.showEventsSheet }));
     },
 
     toggleAvatarSheet() {
       set((s) => ({ showAvatarSheet: !s.showAvatarSheet }));
+    },
+
+    setThoughtBubbleModeEnabled(enabled) {
+      set({ thoughtBubbleModeEnabled: enabled });
     },
   };
 });

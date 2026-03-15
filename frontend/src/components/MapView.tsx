@@ -1,12 +1,27 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { TorontoMapboxScene } from "../world/toronto-mapbox";
 import { useSimulationStore } from "../store/simulationStore";
+import { buildThoughtPool } from "../utils/thoughts";
 
 export default function MapView() {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<TorontoMapboxScene | null>(null);
+
+  const followers = useSimulationStore((s) => s.followers);
+  const posts = useSimulationStore((s) => s.posts);
+  const thoughtBubbleModeEnabled = useSimulationStore(
+    (s) => s.thoughtBubbleModeEnabled,
+  );
+  const latestPost = posts[0] ?? null;
+
+  const thoughtMessages = useMemo(() => {
+    const followerNameById = new Map(
+      followers.map((f) => [f.follower_id, f.name]),
+    );
+    return buildThoughtPool(latestPost, followerNameById);
+  }, [followers, latestPost]);
   const showWelcome = useSimulationStore((s) => s.showWelcome);
 
   // Initialize Mapbox scene on mount, dispose on cleanup
@@ -48,10 +63,17 @@ export default function MapView() {
   }, [showWelcome]);
 
   // Sync followers from store to scene
-  const followers = useSimulationStore((s) => s.followers);
   useEffect(() => {
     sceneRef.current?.setFollowers(followers);
   }, [followers]);
+
+  useEffect(() => {
+    sceneRef.current?.setThoughtBubbleMessages(thoughtMessages);
+  }, [thoughtMessages]);
+
+  useEffect(() => {
+    sceneRef.current?.setThoughtBubbleMode(thoughtBubbleModeEnabled);
+  }, [thoughtBubbleModeEnabled]);
 
   return (
     <div

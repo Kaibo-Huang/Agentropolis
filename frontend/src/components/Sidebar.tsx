@@ -3,16 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import TweetPanel from "./TweetPanel";
 import { useSimulationStore } from "../store/simulationStore";
-
-const THOUGHT_ROTATION_MS = 7000;
-
-const BASE_AGENT_THOUGHTS = [
-  "Transit nodes are busier than usual. Small delay, big ripple.",
-  "A quiet morning often becomes an active afternoon.",
-  "Happiness drifts upward when routes stay predictable.",
-  "Neighborhood chatter tends to spike right after each tick.",
-  "Agents near the core react faster to event changes.",
-];
+import { buildThoughtPool } from "../utils/thoughts";
 
 type SidebarSectionId = "clock" | "thoughts" | "posts";
 
@@ -71,49 +62,31 @@ function SidebarTabIcon({
   );
 }
 
-function pickDifferentIndex(length: number, current: number): number {
-  if (length <= 1) return 0;
-  let next = current;
-  while (next === current) {
-    next = Math.floor(Math.random() * length);
-  }
-  return next;
-}
-
 export default function Sidebar() {
   const posts = useSimulationStore((s) => s.posts);
   const followers = useSimulationStore((s) => s.followers);
   const phase = useSimulationStore((s) => s.phase);
+  const thoughtBubbleModeEnabled = useSimulationStore(
+    (s) => s.thoughtBubbleModeEnabled,
+  );
+  const setThoughtBubbleModeEnabled = useSimulationStore(
+    (s) => s.setThoughtBubbleModeEnabled,
+  );
   const latestPost = posts[0] ?? null;
 
   const [activeSection, setActiveSection] =
     useState<SidebarSectionId | null>(null);
   const [now, setNow] = useState<Date | null>(null);
-  const [thoughtIndex, setThoughtIndex] = useState(0);
 
-  const followerNameById = useMemo(
-    () => new Map(followers.map((f) => [f.follower_id, f.name])),
-    [followers],
-  );
-
-  const thoughts = useMemo(() => {
-    const pool = [...BASE_AGENT_THOUGHTS];
-    if (latestPost) {
-      const snippet =
-        latestPost.text.length > 68
-          ? `${latestPost.text.slice(0, 65)}...`
-          : latestPost.text;
-      const author =
-        followerNameById.get(latestPost.follower_id) ??
-        `Follower #${latestPost.follower_id}`;
-      pool.unshift(`${author}: ${snippet}`);
-    }
-    return pool;
-  }, [latestPost, followerNameById]);
-
-  useEffect(() => {
-    setThoughtIndex(Math.floor(Math.random() * thoughts.length));
-  }, [thoughts.length]);
+  const thoughtPreview = useMemo(() => {
+    if (!latestPost) return null;
+    const followerNameById = new Map(
+      followers.map((f) => [f.follower_id, f.name]),
+    );
+    return (
+      buildThoughtPool(latestPost, followerNameById)[0] ?? null
+    );
+  }, [followers, latestPost]);
 
   useEffect(() => {
     setNow(new Date());
@@ -122,15 +95,6 @@ export default function Sidebar() {
     }, 1000);
     return () => window.clearInterval(clockTimer);
   }, []);
-
-  useEffect(() => {
-    const thoughtTimer = window.setInterval(() => {
-      setThoughtIndex((current) =>
-        pickDifferentIndex(thoughts.length, current),
-      );
-    }, THOUGHT_ROTATION_MS);
-    return () => window.clearInterval(thoughtTimer);
-  }, [thoughts.length]);
 
   const realTime = now
     ? now.toLocaleTimeString("en-CA", {
@@ -200,19 +164,32 @@ export default function Sidebar() {
           {activeSection === "thoughts" ? (
             <>
               <p className="sidebar-thought">
-                {thoughts[thoughtIndex] ?? BASE_AGENT_THOUGHTS[0]}
+                Toggle ambient thought bubbles. When enabled, a
+                random follower gets a thought bubble every few
+                seconds.
+              </p>
+              <p className="sidebar-meta">
+                Bubble mode:{" "}
+                {thoughtBubbleModeEnabled ? "ON" : "OFF"}
               </p>
               <p className="sidebar-meta">Simulation status: {phase}</p>
+              {thoughtPreview ? (
+                <p className="sidebar-meta">
+                  Latest thought source: {thoughtPreview}
+                </p>
+              ) : null}
               <button
                 type="button"
                 className="sidebar-secondary-btn"
                 onClick={() =>
-                  setThoughtIndex((current) =>
-                    pickDifferentIndex(thoughts.length, current),
+                  setThoughtBubbleModeEnabled(
+                    !thoughtBubbleModeEnabled,
                   )
                 }
               >
-                Next thought
+                {thoughtBubbleModeEnabled
+                  ? "Disable bubbles"
+                  : "Enable bubbles"}
               </button>
             </>
           ) : null}

@@ -214,6 +214,35 @@ function getArchetypeColor(archetypeId: number): string {
 }
 
 const TRAVEL_DURATION_MS = 3000;
+const THOUGHT_BUBBLE_INTERVAL_MS = 2400;
+const THOUGHT_BUBBLE_OFFSET: [number, number] = [0, 28];
+const DEFAULT_THOUGHT_MESSAGES = [
+  "Maybe I should reroute through King Street today.",
+  "Crowds feel lighter around the waterfront right now.",
+  "One more tick and this neighborhood might shift.",
+  "I should check what everyone is posting downtown.",
+  "Feels like a good hour to make a move.",
+];
+
+function pickDifferentRandomIndex(
+  length: number,
+  current: number | null,
+): number {
+  if (length <= 1) return 0;
+  let next = Math.floor(Math.random() * length);
+  while (current !== null && next === current) {
+    next = Math.floor(Math.random() * length);
+  }
+  return next;
+}
+
+function followersWithPosition(
+  followers: MapFollower[],
+): Array<MapFollower & { position: LngLat }> {
+  return followers.filter(
+    (f): f is MapFollower & { position: LngLat } => f.position !== null,
+  );
+}
 
 function easeInOut(t: number): number {
   return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
@@ -313,6 +342,17 @@ function buildFollowerPopupHTML(f: MapFollower): string {
         </div>
         ${appearance ? `<div class="profile-card-row profile-card-appearance"><span class="profile-card-label">Look</span><span>${appearance}</span></div>` : ""}
       </div>
+    </div>`;
+}
+
+function buildThoughtBubbleHTML(
+  followerName: string,
+  thought: string,
+): string {
+  return `
+    <div class="thought-bubble">
+      <p class="thought-bubble-text">${escapeHtml(thought)}</p>
+      <span class="thought-bubble-author">${escapeHtml(followerName)}</span>
     </div>`;
 }
 
@@ -536,6 +576,13 @@ export class TorontoMapboxScene {
   private animToFollowers: MapFollower[] = [];
   private animStartTime: number = -1;
   private followerPopup: mapboxgl.Popup | null = null;
+  private thoughtBubblePopup: mapboxgl.Popup | null = null;
+  private thoughtBubbleModeEnabled: boolean = false;
+  private thoughtBubbleTimerId: number | null = null;
+  private thoughtBubbleFollowerId: number | null = null;
+  private thoughtBubbleMessagePool: string[] = [
+    ...DEFAULT_THOUGHT_MESSAGES,
+  ];
   private pendingFollowers: MapFollower[] | null = null;
   // Store map event handlers for cleanup
   private mapHandlers: { event: string; handler: (...args: unknown[]) => void; layer?: string }[] = [];
@@ -600,6 +647,14 @@ export class TorontoMapboxScene {
       className: "follower-popup-container",
       anchor: "bottom",
       offset: [0, 500],
+    });
+
+    this.thoughtBubblePopup = new mapboxgl.Popup({
+      closeButton: false,
+      closeOnClick: false,
+      className: "thought-bubble-popup",
+      anchor: "bottom",
+      offset: THOUGHT_BUBBLE_OFFSET,
     });
 
     const CLICK_MOVE_THRESHOLD_PX = 6;
@@ -825,6 +880,102 @@ export class TorontoMapboxScene {
     });
   }
 
+  setThoughtBubbleMessages(messages: string[]): void {
+    const normalized = messages
+      .map((message) => message.trim())
+      .filter((message) => message.length > 0);
+    this.thoughtBubbleMessagePool =
+      normalized.length > 0
+        ? normalized
+        : [...DEFAULT_THOUGHT_MESSAGES];
+  }
+
+  setThoughtBubbleMode(enabled: boolean): void {
+    if (this.thoughtBubbleModeEnabled === enabled) return;
+    this.thoughtBubbleModeEnabled = enabled;
+
+    if (!enabled) {
+      this.stopThoughtBubbleLoop();
+      return;
+    }
+
+    this.startThoughtBubbleLoop();
+  }
+
+  private startThoughtBubbleLoop(): void {
+    if (!this.map) return;
+    if (this.thoughtBubbleTimerId !== null) return;
+    this.showRandomThoughtBubble();
+    this.thoughtBubbleTimerId = window.setInterval(() => {
+      this.showRandomThoughtBubble();
+    }, THOUGHT_BUBBLE_INTERVAL_MS);
+  }
+
+  private stopThoughtBubbleLoop(): void {
+    if (this.thoughtBubbleTimerId !== null) {
+      window.clearInterval(this.thoughtBubbleTimerId);
+      this.thoughtBubbleTimerId = null;
+    }
+    this.thoughtBubbleFollowerId = null;
+    this.thoughtBubblePopup?.remove();
+  }
+
+  private showRandomThoughtBubble(): void {
+    if (!this.map || !this.thoughtBubblePopup) return;
+    const candidates = followersWithPosition(this.lastFollowers);
+    if (candidates.length === 0) {
+      this.thoughtBubblePopup.remove();
+      this.thoughtBubbleFollowerId = null;
+      return;
+    }
+
+    const currentFollowerIndex = candidates.findIndex(
+      (follower) =>
+        follower.follower_id === this.thoughtBubbleFollowerId,
+    );
+    const nextFollowerIndex = pickDifferentRandomIndex(
+      candidates.length,
+      currentFollowerIndex >= 0 ? currentFollowerIndex : null,
+    );
+    const follower = candidates[nextFollowerIndex];
+    const nextThought =
+      this.thoughtBubbleMessagePool[
+        Math.floor(
+          Math.random() * this.thoughtBubbleMessagePool.length,
+        )
+      ] ?? DEFAULT_THOUGHT_MESSAGES[0];
+
+    this.thoughtBubbleFollowerId = follower.follower_id;
+    this.thoughtBubblePopup
+      .setLngLat(follower.position)
+      .setHTML(buildThoughtBubbleHTML(follower.name, nextThought))
+      .addTo(this.map);
+  }
+
+  private syncThoughtBubblePosition(
+    renderedFollowers: MapFollower[],
+  ): void {
+    if (
+      !this.thoughtBubbleModeEnabled ||
+      !this.thoughtBubblePopup?.isOpen() ||
+      this.thoughtBubbleFollowerId === null
+    ) {
+      return;
+    }
+
+    const activeFollower = renderedFollowers.find(
+      (follower) =>
+        follower.follower_id === this.thoughtBubbleFollowerId,
+    );
+
+    if (!activeFollower?.position) {
+      this.showRandomThoughtBubble();
+      return;
+    }
+
+    this.thoughtBubblePopup.setLngLat(activeFollower.position);
+  }
+
   updateState(hourOfDay: number): void {
     if (!this.map) return;
 
@@ -882,16 +1033,21 @@ export class TorontoMapboxScene {
       }
     }
 
+    let renderedFollowers = this.lastFollowers;
+
     // Animate follower dots from their previous positions to the new ones.
     if (this.animToFollowers.length > 0 && this.animStartTime >= 0) {
       const raw = (performance.now() - this.animStartTime) / TRAVEL_DURATION_MS;
       const t = easeInOut(Math.min(raw, 1));
       const interpolated = interpolateFollowers(this.animFromFollowers, this.animToFollowers, t);
+      renderedFollowers = interpolated;
       const source = this.map.getSource("followers");
       if (source && "setData" in source) {
-        (source as mapboxgl.GeoJSONSource).setData(buildFollowerGeoJSON(interpolated));
+        (source as mapboxgl.GeoJSONSource).setData(buildFollowerGeoJSON(renderedFollowers));
       }
     }
+
+    this.syncThoughtBubblePosition(renderedFollowers);
   }
 
   setFollowers(followers: MapFollower[]): void {
@@ -914,6 +1070,17 @@ export class TorontoMapboxScene {
     this.animToFollowers = followers;
     this.animStartTime = performance.now();
     this.lastFollowers = followers;
+
+    if (!this.thoughtBubbleModeEnabled) return;
+
+    const activeFollowerStillVisible = followers.some(
+      (follower) =>
+        follower.follower_id === this.thoughtBubbleFollowerId &&
+        follower.position !== null,
+    );
+    if (!activeFollowerStillVisible) {
+      this.showRandomThoughtBubble();
+    }
   }
 
   /** Start street-level fly-through from 88 Queens Quay → CN Tower → back (landing page). */
@@ -997,8 +1164,10 @@ export class TorontoMapboxScene {
     this.mapHandlers = [];
 
     // Cleanup popup and map
+    this.stopThoughtBubbleLoop();
     this.followerPopup?.remove();
     this.followerPopup = null;
+    this.thoughtBubblePopup = null;
     if (this.map) {
       this.map.remove();
       this.map = null;
