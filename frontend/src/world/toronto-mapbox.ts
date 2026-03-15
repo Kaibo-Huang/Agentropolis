@@ -129,184 +129,12 @@ const DEFAULT_BUILDING_PALETTE: BuildingColorPalette = [
   "#DBE0DC", // mauve
 ];
 
-// ── Voronoi zone computation ──
-// Zones are computed from seed points using Delaunay/Voronoi tessellation,
-// then clipped to a land polygon that follows the Toronto shoreline.
-// This produces organic, natural-looking boundaries that tile all visible land.
+// ── Zone data ──
+// Zone polygons (residential neighborhoods + work districts) are fetched from
+// the backend API at runtime, which is the single source of truth.
+// See: GET /api/zones/residential, GET /api/zones/work-districts
 
-import { Delaunay } from "d3-delaunay";
-
-// Seed points for residential neighborhoods (same as backend)
-const RESIDENTIAL_SEEDS = [
-  { name: "Liberty Village / Exhibition",      lng: -79.411, lat: 43.640, color: "#10b981" },
-  { name: "Queen West / Trinity-Bellwoods",    lng: -79.416, lat: 43.670, color: "#f59e0b" },
-  { name: "Entertainment / Harbourfront",      lng: -79.390, lat: 43.643, color: "#3b82f6" },
-  { name: "Chinatown / Kensington",            lng: -79.392, lat: 43.668, color: "#ef4444" },
-  { name: "Financial / St. Lawrence",          lng: -79.373, lat: 43.645, color: "#22c55e" },
-  { name: "Downtown Yonge / Church-Wellesley", lng: -79.373, lat: 43.668, color: "#a855f7" },
-  { name: "Corktown / Distillery",             lng: -79.348, lat: 43.650, color: "#f97316" },
-  { name: "Cabbagetown / Regent Park",         lng: -79.348, lat: 43.670, color: "#06b6d4" },
-];
-
-// Seed points for work districts (same as backend)
-// bounds = [min_lng, min_lat, max_lng, max_lat] from original rectangles on main
-const WORK_SEEDS = [
-  { name: "Financial District",     lng: -79.3805, lat: 43.6485, color: "#2563eb", bounds: [-79.387, 43.644, -79.374, 43.653] as const },
-  { name: "Entertainment District", lng: -79.393,  lat: 43.6465, color: "#7c3aed", bounds: [-79.400, 43.642, -79.386, 43.651] as const },
-  { name: "Tech Corridor",          lng: -79.4125, lat: 43.6405, color: "#0891b2", bounds: [-79.420, 43.636, -79.405, 43.645] as const },
-  { name: "UofT District",          lng: -79.3945, lat: 43.6635, color: "#1d4ed8", bounds: [-79.401, 43.658, -79.388, 43.669] as const },
-  { name: "TMU District",           lng: -79.380,  lat: 43.659,  color: "#0369a1", bounds: [-79.385, 43.654, -79.375, 43.664] as const },
-  { name: "Government District",    lng: -79.3895, lat: 43.659,  color: "#b91c1c", bounds: [-79.396, 43.652, -79.383, 43.666] as const },
-  { name: "Hospital Row",           lng: -79.388,  lat: 43.6615, color: "#dc2626", bounds: [-79.393, 43.655, -79.383, 43.668] as const },
-  { name: "CNE / Exhibition Place", lng: -79.4125, lat: 43.636,  color: "#ca8a04", bounds: [-79.420, 43.633, -79.405, 43.639] as const },
-];
-const WORK_BUFFER = 0.003; // ~300m buffer around original bounds
-
-// Land polygon: extended clip boundary with Toronto shoreline on south edge.
-// Covers full visible viewport at minZoom 13 (well beyond maxBounds).
-// MUST be counter-clockwise for Sutherland-Hodgman clipping (isInside test).
-const LAND_POLYGON: [number, number][] = [
-  // Start NW, go CCW: west edge down, shoreline west-to-east, east edge up, top edge west
-  // Extended to cover full viewport at zoom 13 with pitch on large screens
-  [-79.55, 43.75],
-  [-79.55, 43.628],    // SW: far west (Humber Bay / Mimico)
-  // Shoreline waypoints (west to east) — refined to track actual waterfront
-  [-79.45, 43.630],    // Humber Bay east
-  [-79.435, 43.631],   // Sunnyside area
-  [-79.425, 43.631],   // Exhibition Place west / Marilyn Bell Park
-  [-79.418, 43.630],   // BMO Field / Exhibition Place south edge
-  [-79.412, 43.631],   // Ontario Place / Budweiser Stage
-  [-79.407, 43.632],   // Stadium Rd / Fort York approach
-  [-79.402, 43.633],   // Bathurst Quay / Portland slip
-  [-79.398, 43.634],   // Music Garden
-  [-79.395, 43.635],   // Spadina Quay / HTO Park
-  [-79.389, 43.636],   // Rees St slip
-  [-79.383, 43.637],   // York Quay / Harbourfront Centre
-  [-79.378, 43.637],   // York / Simcoe slip
-  [-79.373, 43.638],   // Yonge Quay / Jack Layton Ferry Terminal
-  [-79.368, 43.638],   // Jarvis / Queens Quay
-  [-79.363, 43.639],   // Jarvis slip
-  [-79.358, 43.640],   // Parliament slip
-  [-79.350, 43.641],   // Sugar Beach / Sherbourne Common
-  [-79.340, 43.644],   // Keating Channel / Villiers Island
-  [-79.330, 43.646],   // Cherry Beach approach
-  [-79.30, 43.648],    // East Bayfront / Port Lands
-  // East edge up to NE
-  [-79.24, 43.648],
-  [-79.24, 43.75],
-  // Close
-  [-79.55, 43.75],
-];
-
-// Voronoi bounding box (must cover LAND_POLYGON entirely)
-const VORONOI_BOUNDS: [number, number, number, number] = [-79.55, 43.62, -79.24, 43.75];
-
-/**
- * Sutherland-Hodgman polygon clipping algorithm.
- * Clips `subject` polygon against `clip` polygon.
- * Both are arrays of [x, y] coordinate pairs (assumed closed: last != first is ok).
- */
-function clipPolygon(
-  subject: [number, number][],
-  clip: [number, number][],
-): [number, number][] {
-  let output = subject.slice();
-  for (let i = 0; i < clip.length - 1; i++) {
-    if (output.length === 0) return [];
-    const edgeStart = clip[i];
-    const edgeEnd = clip[i + 1];
-    const input = output;
-    output = [];
-    for (let j = 0; j < input.length; j++) {
-      const current = input[j];
-      const prev = input[(j + input.length - 1) % input.length];
-      const currInside = isInside(current, edgeStart, edgeEnd);
-      const prevInside = isInside(prev, edgeStart, edgeEnd);
-      if (currInside) {
-        if (!prevInside) {
-          output.push(intersect(prev, current, edgeStart, edgeEnd));
-        }
-        output.push(current);
-      } else if (prevInside) {
-        output.push(intersect(prev, current, edgeStart, edgeEnd));
-      }
-    }
-  }
-  return output;
-}
-
-function isInside(p: [number, number], a: [number, number], b: [number, number]): boolean {
-  return (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]) >= 0;
-}
-
-function intersect(
-  a: [number, number], b: [number, number],
-  c: [number, number], d: [number, number],
-): [number, number] {
-  const a1 = b[1] - a[1], b1 = a[0] - b[0], c1 = a1 * a[0] + b1 * a[1];
-  const a2 = d[1] - c[1], b2 = c[0] - d[0], c2 = a2 * c[0] + b2 * c[1];
-  const det = a1 * b2 - a2 * b1;
-  return [(c1 * b2 - c2 * b1) / det, (a1 * c2 - a2 * c1) / det];
-}
-
-/**
- * Compute Voronoi zones from seed points, clipped to the land polygon.
- */
-function computeVoronoiZones(
-  seeds: Array<{ name: string; lng: number; lat: number; color: string }>,
-): Array<{ name: string; color: string; polygon: GeoJSON.Polygon }> {
-  const delaunay = Delaunay.from(seeds, s => s.lng, s => s.lat);
-  const voronoi = delaunay.voronoi(VORONOI_BOUNDS);
-  return seeds.map((seed, i) => {
-    const rawCell = voronoi.cellPolygon(i);
-    // rawCell is closed: [[x,y], ..., [x,y]] where first == last
-    const clipped = clipPolygon(rawCell as [number, number][], LAND_POLYGON);
-    // Close the polygon for GeoJSON
-    const coords = clipped.slice();
-    if (coords.length > 0 && (coords[0][0] !== coords[coords.length - 1][0] || coords[0][1] !== coords[coords.length - 1][1])) {
-      coords.push(coords[0]);
-    }
-    return {
-      name: seed.name,
-      color: seed.color,
-      polygon: { type: "Polygon" as const, coordinates: [coords] },
-    };
-  });
-}
-
-// ── Residential Neighborhoods (8) ──
-// Voronoi cells from seed points, clipped to land polygon (shoreline-aware).
-const RESIDENTIAL_ZONES = computeVoronoiZones(RESIDENTIAL_SEEDS);
-
-// ── Work Districts (8) ──
-// Voronoi cells clipped to both land polygon AND local envelope (buffered original bounds).
-// This gives organic Voronoi edges between neighboring districts without expanding to fill the map.
-const WORK_ZONES = (() => {
-  const delaunay = Delaunay.from(WORK_SEEDS, s => s.lng, s => s.lat);
-  const voronoi = delaunay.voronoi(VORONOI_BOUNDS);
-  return WORK_SEEDS.map((seed, i) => {
-    const rawCell = voronoi.cellPolygon(i) as [number, number][];
-    // Clip to land polygon (shoreline), then to local envelope
-    const b = seed.bounds;
-    const localEnvelope: [number, number][] = [
-      [b[0] - WORK_BUFFER, b[1] - WORK_BUFFER],
-      [b[2] + WORK_BUFFER, b[1] - WORK_BUFFER],
-      [b[2] + WORK_BUFFER, b[3] + WORK_BUFFER],
-      [b[0] - WORK_BUFFER, b[3] + WORK_BUFFER],
-      [b[0] - WORK_BUFFER, b[1] - WORK_BUFFER],
-    ];
-    const clipped = clipPolygon(clipPolygon(rawCell, LAND_POLYGON), localEnvelope);
-    const coords = clipped.slice();
-    if (coords.length > 0 && (coords[0][0] !== coords[coords.length - 1][0] || coords[0][1] !== coords[coords.length - 1][1])) {
-      coords.push(coords[0]);
-    }
-    return {
-      name: seed.name,
-      color: seed.color,
-      polygon: { type: "Polygon" as const, coordinates: [coords] },
-    };
-  });
-})();
+import { ApiClient } from "../api/client";
 
 /** Height-based color gradient (for default layer when not in a region). */
 function buildingColorExpression(
@@ -515,7 +343,9 @@ function setupFollowerLayer(
 
 function setup3D(
   map: mapboxgl.Map,
-  buildingColors: BuildingColorPalette = DEFAULT_BUILDING_PALETTE
+  buildingColors: BuildingColorPalette = DEFAULT_BUILDING_PALETTE,
+  residentialGeoJSON?: GeoJSON.FeatureCollection,
+  workGeoJSON?: GeoJSON.FeatureCollection,
 ): void {
   // 3D terrain
   if (!map.getSource("mapbox-dem")) {
@@ -541,125 +371,111 @@ function setup3D(
   const beforeId = labelLayer?.id;
 
   // ── Residential Neighborhoods (soft tint) ──
-  if (!map.getSource("toronto-residential")) {
-    const residentialFeatures: GeoJSON.Feature<GeoJSON.Polygon>[] = RESIDENTIAL_ZONES.map(
-      (z) => ({
-        type: "Feature" as const,
-        properties: { color: z.color, name: z.name },
-        geometry: z.polygon,
-      })
-    );
+  if (residentialGeoJSON && !map.getSource("toronto-residential")) {
     map.addSource("toronto-residential", {
       type: "geojson",
-      data: { type: "FeatureCollection", features: residentialFeatures },
+      data: residentialGeoJSON,
+    });
+    map.addLayer(
+      {
+        id: "toronto-residential-fill",
+        type: "fill",
+        source: "toronto-residential",
+        slot: "middle",
+        paint: {
+          "fill-color": ["get", "color"],
+          "fill-opacity": 0.18,
+        },
+      },
+      beforeId
+    );
+    map.addLayer(
+      {
+        id: "toronto-residential-outline",
+        type: "line",
+        source: "toronto-residential",
+        slot: "middle",
+        paint: {
+          "line-color": ["get", "color"],
+          "line-width": 1.5,
+          "line-dasharray": [4, 3],
+          "line-opacity": 0.6,
+        },
+      },
+      beforeId
+    );
+    map.addLayer({
+      id: "toronto-residential-labels",
+      type: "symbol",
+      source: "toronto-residential",
+      layout: {
+        "text-field": ["get", "name"],
+        "text-size": 11,
+        "text-font": ["DIN Pro Medium", "Arial Unicode MS Regular"],
+        "text-anchor": "center",
+        "text-max-width": 8,
+      },
+      paint: {
+        "text-color": "#374151",
+        "text-halo-color": "rgba(255,255,255,0.85)",
+        "text-halo-width": 1.5,
+        "text-opacity": 0.8,
+      },
     });
   }
-  map.addLayer(
-    {
-      id: "toronto-residential-fill",
-      type: "fill",
-      source: "toronto-residential",
-      slot: "middle",
-      paint: {
-        "fill-color": ["get", "color"],
-        "fill-opacity": 0.18,
-      },
-    },
-    beforeId
-  );
-  map.addLayer(
-    {
-      id: "toronto-residential-outline",
-      type: "line",
-      source: "toronto-residential",
-      slot: "middle",
-      paint: {
-        "line-color": ["get", "color"],
-        "line-width": 1.5,
-        "line-dasharray": [4, 3],
-        "line-opacity": 0.6,
-      },
-    },
-    beforeId
-  );
-  map.addLayer({
-    id: "toronto-residential-labels",
-    type: "symbol",
-    source: "toronto-residential",
-    layout: {
-      "text-field": ["get", "name"],
-      "text-size": 11,
-      "text-font": ["DIN Pro Medium", "Arial Unicode MS Regular"],
-      "text-anchor": "center",
-      "text-max-width": 8,
-    },
-    paint: {
-      "text-color": "#374151",
-      "text-halo-color": "rgba(255,255,255,0.85)",
-      "text-halo-width": 1.5,
-      "text-opacity": 0.8,
-    },
-  });
 
   // ── Work Districts (bold overlay) ──
-  if (!map.getSource("toronto-work")) {
-    const workFeatures: GeoJSON.Feature<GeoJSON.Polygon>[] = WORK_ZONES.map(
-      (z) => ({
-        type: "Feature" as const,
-        properties: { color: z.color, name: z.name },
-        geometry: z.polygon,
-      })
-    );
+  if (workGeoJSON && !map.getSource("toronto-work")) {
     map.addSource("toronto-work", {
       type: "geojson",
-      data: { type: "FeatureCollection", features: workFeatures },
+      data: workGeoJSON,
+    });
+    map.addLayer(
+      {
+        id: "toronto-work-fill",
+        type: "fill",
+        source: "toronto-work",
+        slot: "middle",
+        paint: {
+          "fill-color": ["get", "color"],
+          "fill-opacity": 0.35,
+        },
+      },
+      beforeId
+    );
+    map.addLayer(
+      {
+        id: "toronto-work-outline",
+        type: "line",
+        source: "toronto-work",
+        slot: "middle",
+        paint: {
+          "line-color": ["get", "color"],
+          "line-width": 2,
+          "line-opacity": 0.8,
+        },
+      },
+      beforeId
+    );
+    map.addLayer({
+      id: "toronto-work-labels",
+      type: "symbol",
+      source: "toronto-work",
+      layout: {
+        "text-field": ["get", "name"],
+        "text-size": 12,
+        "text-font": ["DIN Pro Bold", "Arial Unicode MS Bold"],
+        "text-anchor": "center",
+        "text-max-width": 7,
+      },
+      paint: {
+        "text-color": "#1f2937",
+        "text-halo-color": "rgba(255,255,255,0.9)",
+        "text-halo-width": 1.8,
+        "text-opacity": 0.9,
+      },
     });
   }
-  map.addLayer(
-    {
-      id: "toronto-work-fill",
-      type: "fill",
-      source: "toronto-work",
-      slot: "middle",
-      paint: {
-        "fill-color": ["get", "color"],
-        "fill-opacity": 0.35,
-      },
-    },
-    beforeId
-  );
-  map.addLayer(
-    {
-      id: "toronto-work-outline",
-      type: "line",
-      source: "toronto-work",
-      slot: "middle",
-      paint: {
-        "line-color": ["get", "color"],
-        "line-width": 2,
-        "line-opacity": 0.8,
-      },
-    },
-    beforeId
-  );
-  map.addLayer({
-    id: "toronto-work-labels",
-    type: "symbol",
-    source: "toronto-work",
-    layout: {
-      "text-field": ["get", "name"],
-      "text-size": 12,
-      "text-font": ["DIN Pro Bold", "Arial Unicode MS Bold"],
-      "text-anchor": "center",
-      "text-max-width": 7,
-    },
-    paint: {
-      "text-color": "#1f2937",
-      "text-halo-color": "rgba(255,255,255,0.9)",
-      "text-halo-width": 1.8,
-      "text-opacity": 0.9,
-    },
-  });
 
   // "composite" source only exists in classic Mapbox styles (streets-v12, etc.).
   // The Standard style has built-in 3D buildings, so skip if source is missing.
@@ -705,6 +521,10 @@ export class TorontoMapboxScene {
   // Landing page: street-level fly-through 88 Queens Quay → CN Tower → back
   private landingStartTime: number = -1;
   private isLandingRoute: boolean = false;
+  // Zone GeoJSON fetched from backend (single source of truth)
+  private residentialGeoJSON: GeoJSON.FeatureCollection | null = null;
+  private workGeoJSON: GeoJSON.FeatureCollection | null = null;
+  private styleLoaded: boolean = false;
 
   constructor(options: TorontoMapboxOptions) {
     const { container, buildingColors } = options;
@@ -923,7 +743,8 @@ export class TorontoMapboxScene {
     // restoring the last known followers so dots don't disappear.
     this.map.on("style.load", () => {
       if (!this.map) return;
-      setup3D(this.map, this.buildingColors);
+      this.styleLoaded = true;
+      setup3D(this.map, this.buildingColors, this.residentialGeoJSON ?? undefined, this.workGeoJSON ?? undefined);
       setupFollowerLayer(this.map, this.lastFollowers);
       // Apply any followers queued before style was ready
       if (this.pendingFollowers) {
@@ -931,6 +752,30 @@ export class TorontoMapboxScene {
         this.pendingFollowers = null;
         this.setFollowers(pending);
       }
+    });
+
+    // Fetch unified zone GeoJSON from backend (single source of truth).
+    // Split into residential/work by type property for distinct styling.
+    const zoneApi = new ApiClient(
+      (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL) || "http://localhost:8000"
+    );
+    zoneApi.getZones().then((allZones) => {
+      const residential: GeoJSON.FeatureCollection = {
+        type: "FeatureCollection",
+        features: allZones.features.filter((f) => f.properties?.type === "residential"),
+      };
+      const work: GeoJSON.FeatureCollection = {
+        type: "FeatureCollection",
+        features: allZones.features.filter((f) => f.properties?.type === "work"),
+      };
+      this.residentialGeoJSON = residential;
+      this.workGeoJSON = work;
+      // If style already loaded before zones arrived, apply now
+      if (this.styleLoaded && this.map) {
+        setup3D(this.map, this.buildingColors, residential, work);
+      }
+    }).catch((err) => {
+      console.warn("Failed to fetch zone data from backend:", err);
     });
   }
 
