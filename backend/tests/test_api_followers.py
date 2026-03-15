@@ -31,6 +31,13 @@ def _make_session(session_id: uuid.UUID | None = None) -> MagicMock:
     return s
 
 
+def _make_archetype(archetype_id: int, industry: str) -> MagicMock:
+    a = MagicMock()
+    a.archetype_id = archetype_id
+    a.industry = industry
+    return a
+
+
 def _make_follower(
     session_id: uuid.UUID,
     follower_id: int = 1,
@@ -52,8 +59,10 @@ def _make_follower(
     f.volatility = 0.5
     f.avatar_seed = 12345
     f.avatar_params = None
+    f.industry = "Technology"
     f.home_neighborhood = "Liberty Village / Exhibition"
     f.work_district = "Financial District"
+    f.recent_memories = []
     return f
 
 
@@ -71,6 +80,14 @@ async def test_list_followers_returns_200(tmp_path):
     with (
         patch(f"{_QUERIES_MODULE}.get_session", new=AsyncMock(return_value=session_obj)),
         patch(f"{_QUERIES_MODULE}.get_followers_for_session", new=AsyncMock(return_value=[follower1, follower2])),
+        patch(
+            f"{_QUERIES_MODULE}.get_archetypes_for_session",
+            new=AsyncMock(return_value=[_make_archetype(1, "Technology")]),
+        ),
+        patch(
+            f"{_QUERIES_MODULE}.get_recent_memory_summaries_for_archetypes",
+            new=AsyncMock(return_value={1: []}),
+        ),
         patch(f"{_QUERIES_MODULE}.get_follower_count", new=AsyncMock(return_value=2)),
     ):
         async with AsyncClient(
@@ -85,7 +102,7 @@ async def test_list_followers_returns_200(tmp_path):
     assert data["total"] == 2
     assert len(data["followers"]) == 2
     assert data["offset"] == 0
-    assert data["limit"] == 50  # default
+    assert data["limit"] == 500  # default
 
 
 @pytest.mark.asyncio
@@ -108,6 +125,14 @@ async def test_list_followers_pagination_params():
     with (
         patch(f"{_QUERIES_MODULE}.get_session", new=AsyncMock(return_value=session_obj)),
         patch(f"{_QUERIES_MODULE}.get_followers_for_session", side_effect=mock_get_followers),
+        patch(
+            f"{_QUERIES_MODULE}.get_archetypes_for_session",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
+            f"{_QUERIES_MODULE}.get_recent_memory_summaries_for_archetypes",
+            new=AsyncMock(return_value={}),
+        ),
         patch(f"{_QUERIES_MODULE}.get_follower_count", new=AsyncMock(return_value=100)),
     ):
         async with AsyncClient(
@@ -147,8 +172,8 @@ async def test_list_followers_returns_404_for_missing_session():
 
 
 @pytest.mark.asyncio
-async def test_list_followers_limit_max_is_200():
-    """GET /api/sessions/{id}/followers rejects limit > 200."""
+async def test_list_followers_limit_max_is_5000():
+    """GET /api/sessions/{id}/followers rejects limit > 5000."""
     sid = uuid.uuid4()
     mock_db = AsyncMock()
 
@@ -159,7 +184,7 @@ async def test_list_followers_limit_max_is_200():
             transport=ASGITransport(app=app), base_url="http://test"
         ) as client:
             response = await client.get(
-                f"/api/sessions/{sid}/followers?limit=201"
+                f"/api/sessions/{sid}/followers?limit=5001"
             )
 
     app.dependency_overrides.clear()
@@ -201,6 +226,24 @@ async def test_follower_response_fields_present():
     with (
         patch(f"{_QUERIES_MODULE}.get_session", new=AsyncMock(return_value=session_obj)),
         patch(f"{_QUERIES_MODULE}.get_followers_for_session", new=AsyncMock(return_value=[follower])),
+        patch(
+            f"{_QUERIES_MODULE}.get_archetypes_for_session",
+            new=AsyncMock(return_value=[_make_archetype(3, "Finance")]),
+        ),
+        patch(
+            f"{_QUERIES_MODULE}.get_recent_memory_summaries_for_archetypes",
+            new=AsyncMock(
+                return_value={
+                    3: [
+                        {
+                            "virtual_time": datetime.now(timezone.utc),
+                            "action_type": "commute",
+                            "thinking": "Got to head downtown.",
+                        }
+                    ]
+                }
+            ),
+        ),
         patch(f"{_QUERIES_MODULE}.get_follower_count", new=AsyncMock(return_value=1)),
     ):
         async with AsyncClient(
@@ -215,7 +258,8 @@ async def test_follower_response_fields_present():
     required_fields = [
         "follower_id", "archetype_id", "name", "age", "gender", "race",
         "home_position", "work_position", "position",
-        "status_ailments", "happiness", "volatility",
+        "status_ailments", "happiness", "volatility", "industry",
+        "recent_memories",
     ]
     for field in required_fields:
         assert field in f, f"Missing field '{field}' in follower response"

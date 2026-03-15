@@ -94,7 +94,7 @@ reasoning (string, required)
 
 EVENT_PRESET_EXAMPLES: list[dict] = [
     {
-        "narrative": "A new highly-contagious coronavirus has emerged",
+        "narrative": "COVID-19 returns with a vengeance",
         "effects": {
             "stay_home_rate": 0.80,
             "happiness_delta": -0.15,
