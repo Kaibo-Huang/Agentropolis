@@ -4,9 +4,7 @@ import { useEffect } from "react";
 import ErrorBoundary from "./ErrorBoundary";
 import HUD from "./HUD";
 import MapContainer from "./MapContainer";
-import TweetPanel from "./TweetPanel";
-import EventsSheet from "./EventsSheet";
-import AvatarSheet from "./AvatarSheet";
+import Toolkit from "./Toolkit";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { useSimulationStore } from "../store/simulationStore";
 
@@ -27,9 +25,7 @@ export default function SimulationView() {
       {!showWelcome && (
         <>
           <HUD />
-          <TweetPanel />
-          <EventsSheet />
-          <AvatarSheet />
+          <Toolkit />
         </>
       )}
     </ErrorBoundary>

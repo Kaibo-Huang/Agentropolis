@@ -9,8 +9,7 @@ export default function HUD() {
   const tickOnce = useSimulationStore((s) => s.tickOnce);
   const startAutoRun = useSimulationStore((s) => s.startAutoRun);
   const stopAutoRun = useSimulationStore((s) => s.stopAutoRun);
-  const toggleEventsSheet = useSimulationStore((s) => s.toggleEventsSheet);
-  const toggleAvatarSheet = useSimulationStore((s) => s.toggleAvatarSheet);
+  const toggleToolkitMobile = useSimulationStore((s) => s.toggleToolkitMobile);
 
   const canTick = phase === "ready";
   const isAutoRunning = phase === "auto_running";
@@ -50,13 +49,8 @@ export default function HUD() {
           >
             {isAutoRunning ? "Stop" : "Auto-Run"}
           </button>
-          <button type="button" className="btn" onClick={toggleEventsSheet}>
-            Events
-            <span className="kbd">E</span>
-          </button>
-          <button type="button" className="btn" onClick={toggleAvatarSheet}>
-            Create avatar
-            <span className="kbd">A</span>
+          <button type="button" className="btn btn-toolkit-mobile" onClick={toggleToolkitMobile}>
+            Toolkit
           </button>
         </div>
       </div>
