@@ -22,7 +22,7 @@ export default function HUD() {
         hour: "2-digit",
         minute: "2-digit",
         hour12: false,
-        timeZone: "UTC",
+        timeZone: "America/Toronto",
       })
     : "Loading...";
 

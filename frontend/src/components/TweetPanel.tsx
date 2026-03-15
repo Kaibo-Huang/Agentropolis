@@ -14,7 +14,12 @@ export default function TweetPanel() {
             <span className="tweet-author">Follower #{p.follower_id}</span>
             <span className="tweet-text">{p.text}</span>
             <span className="tweet-time">
-              {new Date(p.virtual_time).toLocaleTimeString()}
+              {new Date(p.virtual_time).toLocaleTimeString("en-CA", {
+                timeZone: "America/Toronto",
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: false,
+              })}
             </span>
           </div>
         ))}

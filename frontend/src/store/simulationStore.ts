@@ -111,7 +111,12 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
   function computeHourOfDay(session: SessionResponse | null): number {
     if (!session) return 8;
     const vt = new Date(session.virtual_time);
-    return vt.getUTCHours();
+    const torontoHour = vt.toLocaleString("en-CA", {
+      timeZone: "America/Toronto",
+      hour: "numeric",
+      hour12: false,
+    });
+    return parseInt(torontoHour, 10) || 0;
   }
 
   async function autoRunLoop() {
@@ -239,7 +244,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
 
         const vtDisplay = new Date(
           sessionRes.virtual_time,
-        ).toLocaleString();
+        ).toLocaleString("en-CA", { timeZone: "America/Toronto" });
         log(
           `Tick ${tickResult.tick_number}: ${vtDisplay} (${tickResult.archetypes_processed} OK, ${tickResult.archetypes_failed} fail)`,
         );
