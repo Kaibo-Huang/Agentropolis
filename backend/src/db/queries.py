@@ -382,22 +382,35 @@ async def batch_insert_relationships(
 
 
 async def get_relationship_summary(
-    db: AsyncSession, session_id: uuid.UUID, archetype_id: int
+    db: AsyncSession,
+    session_id: uuid.UUID,
+    archetype_id: int,
+    follower_ids: list[int] | None = None,
 ) -> dict:
     """
     Returns the count and average strength of relationships for followers
     belonging to the given archetype in a session.
 
-    Uses a subquery to find relevant follower IDs first.
+    When `follower_ids` is provided (already fetched by the caller), the
+    inner subquery is skipped and the IDs are used directly, eliminating
+    a redundant round-trip.
     """
-    follower_ids_subq = (
-        select(Follower.follower_id)
-        .where(
-            Follower.session_id == session_id,
-            Follower.archetype_id == archetype_id,
+    if follower_ids is not None:
+        id_filter = (Relationship.follower1_id.in_(follower_ids)) | (
+            Relationship.follower2_id.in_(follower_ids)
         )
-        .scalar_subquery()
-    )
+    else:
+        follower_ids_subq = (
+            select(Follower.follower_id)
+            .where(
+                Follower.session_id == session_id,
+                Follower.archetype_id == archetype_id,
+            )
+            .scalar_subquery()
+        )
+        id_filter = (Relationship.follower1_id.in_(follower_ids_subq)) | (
+            Relationship.follower2_id.in_(follower_ids_subq)
+        )
 
     result = await db.execute(
         select(
@@ -407,8 +420,7 @@ async def get_relationship_summary(
             func.max(Relationship.relation_strength).label("max_strength"),
         ).where(
             Relationship.session_id == session_id,
-            (Relationship.follower1_id.in_(follower_ids_subq))
-            | (Relationship.follower2_id.in_(follower_ids_subq)),
+            id_filter,
         )
     )
     row = result.mappings().one()
@@ -424,10 +436,12 @@ async def get_locations_by_region(
     db: AsyncSession,
     region: str,
     location_type: str | None = None,
+    limit: int = 5,
 ) -> list[Location]:
     stmt = select(Location).where(Location.region == region)
     if location_type is not None:
         stmt = stmt.where(Location.type == location_type)
+    stmt = stmt.limit(limit)
     result = await db.execute(stmt)
     return list(result.scalars().all())
 

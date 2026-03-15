@@ -1,71 +1,69 @@
 """
 Tier 1 archetype agent — one LLM call per archetype per tick.
 
-Uses gpt-5.4 with tools for autonomous context gathering. The agent decides
-which tools to call (up to 10) and returns a validated ArchetypeResponse.
+Context is pre-fetched in parallel before the LLM call and injected directly
+into the user message, eliminating tool-call round trips entirely.
 """
 
 from __future__ import annotations
 
+import json
+
 import railtracks as rt
 
 from src.agents.schemas import ArchetypeResponse
-from src.agents.tools import (
-    get_active_events,
-    get_current_time,
-    get_follower_stats,
-    get_nearby_locations,
-    get_recent_memories,
-    get_relationships,
+
+archetype_llm = rt.llm.OpenAILLM("gpt-4.1-mini")
+
+# Single shared agent node — context is passed per-call in the user message.
+archetype_agent = rt.agent_node(
+    name="archetype-decision",
+    llm=archetype_llm,
+    system_message=(
+        "You are simulating a demographic group in Toronto. "
+        "All context you need is provided in the user message. "
+        "Generate actions that fill the time gap between current_time and target_time. "
+        "Each action requires: action_type, action_params (dict), duration (hours), "
+        "thinking (1 sentence max).\n"
+        "Valid action_types: work, commute, eat, sleep, shop, exercise, socialize, "
+        "post, attend_event, visit_family."
+    ),
+    output_schema=ArchetypeResponse,
 )
 
-archetype_llm = rt.llm.OpenAILLM("gpt-4.1")
 
-
-def build_archetype_agent(archetype):
-    """Build a Railtracks agent node configured for a specific archetype.
-
-    Parameters
-    ----------
-    archetype : Archetype
-        SQLAlchemy model instance with industry, social_class, region attributes.
-
-    Returns
-    -------
-    A Railtracks agent node class ready for use with ``rt.call()``.
-    """
+def build_archetype_user_message(
+    archetype,
+    tick_number: int,
+    prefetched_context: dict,
+    attempt: int = 0,
+) -> str:
+    """Build the user message with all pre-fetched context inline."""
     home = getattr(archetype, "home_neighborhood", None) or archetype.region
     work = getattr(archetype, "work_district", None) or archetype.region
-    system_message = (
-        f"You are simulating a demographic group in Toronto: "
-        f"{archetype.industry} workers, {archetype.social_class or 'mixed'} class, "
+
+    ctx = prefetched_context
+    memories_str = json.dumps(ctx.get("recent_memories", []))
+    follower_str = json.dumps(ctx.get("follower_stats", {}))
+    rel_str = json.dumps(ctx.get("relationships", {}))
+    events_str = json.dumps(ctx.get("events", []))
+    home_locs = json.dumps(ctx.get("home_locations", []))
+    work_locs = json.dumps(ctx.get("work_locations", []))
+
+    retry_note = f"\n(Retry attempt {attempt + 1}.)" if attempt > 0 else ""
+
+    return (
+        f"Archetype: {archetype.industry} workers, {archetype.social_class or 'mixed'} class, "
         f"living in {home}, working in {work}.\n\n"
-        "Use your tools to gather context before making decisions:\n"
-        "- Check current time and how much time you need to fill\n"
-        "- Look at recent memories to maintain continuity\n"
-        "- Check active events that might affect behavior\n"
-        "- Review follower stats (happiness, health) to inform decisions\n"
-        "- Check nearby locations (zone='work' for work, zone='home' for home)\n"
-        "- Review relationships for social action decisions\n\n"
-        "Then generate actions. Each action needs: action_type, action_params, "
-        "duration (hours), thinking (1 sentence max).\n"
-        "Valid types: work, commute, eat, sleep, shop, exercise, socialize, "
-        "post, attend_event, visit_family.\n"
-        "Actions must fill the time gap between when current actions finish "
-        "and the next tick."
-    )
-    return rt.agent_node(
-        name=f"archetype-{archetype.archetype_id}",
-        llm=archetype_llm,
-        system_message=system_message,
-        tool_nodes=[
-            get_active_events,
-            get_recent_memories,
-            get_follower_stats,
-            get_nearby_locations,
-            get_relationships,
-            get_current_time,
-        ],
-        output_schema=ArchetypeResponse,
-        max_tool_calls=10,
+        f"TICK #{tick_number}\n"
+        f"Current time: {ctx['current_time']}\n"
+        f"Target time (fill actions up to): {ctx['next_tick_time']}\n\n"
+        f"Recent memories:\n{memories_str}\n\n"
+        f"Follower stats: {follower_str}\n\n"
+        f"Relationship summary: {rel_str}\n\n"
+        f"Active events: {events_str}\n\n"
+        f"Home neighborhood locations ({home}): {home_locs}\n\n"
+        f"Work district locations ({work}): {work_locs}\n\n"
+        f"Generate actions to fill the time from {ctx['current_time']} to {ctx['next_tick_time']}."
+        f"{retry_note}"
     )

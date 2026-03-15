@@ -111,6 +111,7 @@ class Archetype(Base):
             "Follower.archetype_id == Archetype.archetype_id)"
         ),
         lazy="noload",
+        overlaps="session,followers",
     )
 
 
@@ -158,7 +159,9 @@ class Follower(Base):
     home_neighborhood: Mapped[str | None] = mapped_column(String(128), nullable=True)
     work_district: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
-    session: Mapped["Session"] = relationship(back_populates="followers", lazy="noload")
+    session: Mapped["Session"] = relationship(
+        back_populates="followers", lazy="noload", overlaps="followers"
+    )
     archetype: Mapped["Archetype"] = relationship(
         back_populates="followers",
         primaryjoin=(
@@ -167,6 +170,7 @@ class Follower(Base):
         ),
         foreign_keys="[Follower.session_id, Follower.archetype_id]",
         lazy="noload",
+        overlaps="followers,session",
     )
 
 
@@ -323,6 +327,9 @@ class Relationship(Base):
 
 class Location(Base):
     __tablename__ = "locations"
+    __table_args__ = (
+        Index("idx_locations_region", "region"),
+    )
 
     location_id: Mapped[int] = mapped_column(
         Integer, primary_key=True, autoincrement=True
