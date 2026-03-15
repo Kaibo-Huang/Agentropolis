@@ -117,10 +117,33 @@ export interface PostListResponse {
 
 export type WsOutgoing = { type: "subscribe" } | { type: "pong" };
 
+export interface WsArchetypeAction {
+  action_type: string;
+  location: string | null;
+  duration: number;
+}
+
+export interface WsFollowerUpdate {
+  follower_id: number;
+  happiness: number;
+  position?: [number, number] | null;
+}
+
+export interface WsPostUpdate {
+  post_id: number;
+  follower_id: number;
+  text: string;
+  virtual_time: string;
+}
+
 export type WsIncoming =
   | { type: "subscribed"; data: { session_id: string } }
   | { type: "ping" }
-  | { type: "error"; data: { message: string } };
+  | { type: "error"; data: { message: string } }
+  | { type: "tick_start"; data: { tick_number: number; virtual_time: string; archetype_count: number } }
+  | { type: "tick_archetype_decision"; data: { archetype_id: number; actions: WsArchetypeAction[] } }
+  | { type: "tick_archetype_update"; data: { archetype_id: number; followers: WsFollowerUpdate[]; posts: WsPostUpdate[] } }
+  | { type: "tick_complete"; data: { tick_number: number; virtual_time: string; archetypes_processed: number; archetypes_failed: number } };
 
 // Mapbox [lng, lat] tuple (backend stores [lat, lng])
 export type LngLat = [number, number];

@@ -1,7 +1,18 @@
+import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+logging.basicConfig(
+    level=getattr(logging, os.getenv("LOG_LEVEL", "DEBUG").upper(), logging.DEBUG),
+    format="%(asctime)s %(levelname)s %(name)s | %(message)s",
+    datefmt="%H:%M:%S",
+)
+# Silence chatty third-party libraries
+for _noisy in ("litellm", "LiteLLM", "openai", "httpcore", "httpx", "asyncio", "RT"):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
 
 from src.api.router import api_router
 from src.db.engine import close_db, init_db
