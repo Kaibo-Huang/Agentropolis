@@ -22,26 +22,19 @@ export default function MapView() {
     );
     return buildThoughtPool(latestPost, followerNameById);
   }, [followers, latestPost]);
-  const showWelcome = useSimulationStore((s) => s.showWelcome);
 
   // Initialize Mapbox scene on mount, dispose on cleanup
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const landingFirstView = useSimulationStore.getState().showWelcome;
     const scene = new TorontoMapboxScene({
       container: containerRef.current,
-      landingFirstView,
     });
     sceneRef.current = scene;
 
     scene.startRenderLoop(
       () => useSimulationStore.getState().hourOfDay,
     );
-
-    if (useSimulationStore.getState().showWelcome) {
-      scene.startLandingRoute();
-    }
 
     return () => {
       scene.dispose();
@@ -52,15 +45,6 @@ export default function MapView() {
       }
     };
   }, []);
-
-  // Landing page: street-level route when welcome is shown, default view when dismissed
-  useEffect(() => {
-    if (showWelcome) {
-      sceneRef.current?.startLandingRoute();
-    } else {
-      sceneRef.current?.stopLandingRoute();
-    }
-  }, [showWelcome]);
 
   // Sync followers from store to scene
   useEffect(() => {
@@ -79,7 +63,6 @@ export default function MapView() {
     <div
       id="canvas-container"
       ref={containerRef}
-      className={showWelcome ? "landing-active" : undefined}
     />
   );
 }

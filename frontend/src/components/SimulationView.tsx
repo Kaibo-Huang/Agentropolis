@@ -34,7 +34,6 @@ export default function SimulationView({
   useEffect(() => {
     void connectToSession(sessionId);
   }, [connectToSession, sessionId]);
-  const showWelcome = useSimulationStore((s) => s.showWelcome);
 
   // Cleanup on unmount: stop timers, disconnect WebSocket
   useEffect(() => {
@@ -84,12 +83,9 @@ export default function SimulationView({
       <MapContainer />
       {!isLoading ? (
         <>
-          {!showWelcome && (
-        <>
           <HUD />
-              <Sidebar />
-              <EventsSheet />
-              <AvatarSheet />
+          <Sidebar />
+          <AvatarSheet />
         </>
       ) : null}
       {isLoading ? (
