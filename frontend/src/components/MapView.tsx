@@ -7,6 +7,7 @@ import { useSimulationStore } from "../store/simulationStore";
 export default function MapView() {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<TorontoMapboxScene | null>(null);
+  const showWelcome = useSimulationStore((s) => s.showWelcome);
 
   // Initialize Mapbox scene on mount, dispose on cleanup
   useEffect(() => {
@@ -19,6 +20,10 @@ export default function MapView() {
       () => useSimulationStore.getState().hourOfDay,
     );
 
+    if (useSimulationStore.getState().showWelcome) {
+      scene.startLandingRoute();
+    }
+
     return () => {
       scene.dispose();
       sceneRef.current = null;
@@ -29,11 +34,26 @@ export default function MapView() {
     };
   }, []);
 
+  // Landing page: street-level route when welcome is shown, default view when dismissed
+  useEffect(() => {
+    if (showWelcome) {
+      sceneRef.current?.startLandingRoute();
+    } else {
+      sceneRef.current?.stopLandingRoute();
+    }
+  }, [showWelcome]);
+
   // Sync followers from store to scene
   const followers = useSimulationStore((s) => s.followers);
   useEffect(() => {
     sceneRef.current?.setFollowers(followers);
   }, [followers]);
 
-  return <div id="canvas-container" ref={containerRef} />;
+  return (
+    <div
+      id="canvas-container"
+      ref={containerRef}
+      className={showWelcome ? "landing-active" : undefined}
+    />
+  );
 }
