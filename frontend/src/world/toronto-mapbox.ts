@@ -105,144 +105,172 @@ const DEFAULT_BUILDING_PALETTE: BuildingColorPalette = [
   "#DBE0DC", // mauve
 ];
 
-// ── Residential Neighborhoods (8) ──
-// 100% tiling of viewable land area. Southern edges follow approx shoreline.
-// Grid: 4 cols (Spadina, Yonge, Parliament) × 2 rows (Queen St).
-const RESIDENTIAL_ZONES: Array<{ name: string; color: string; polygon: GeoJSON.Polygon }> = [
-  {
-    name: "Liberty Village / Exhibition",
-    color: "#10b981",
-    polygon: { type: "Polygon", coordinates: [[
-      [-79.420, 43.636], [-79.408, 43.635], [-79.397, 43.636],
-      [-79.397, 43.652], [-79.420, 43.652], [-79.420, 43.636],
-    ]] },
-  },
-  {
-    name: "Queen West / Trinity-Bellwoods",
-    color: "#f59e0b",
-    polygon: { type: "Polygon", coordinates: [[
-      [-79.420, 43.652], [-79.397, 43.652],
-      [-79.397, 43.690], [-79.420, 43.690], [-79.420, 43.652],
-    ]] },
-  },
-  {
-    name: "Entertainment / Harbourfront",
-    color: "#3b82f6",
-    polygon: { type: "Polygon", coordinates: [[
-      [-79.397, 43.637], [-79.390, 43.636], [-79.383, 43.637],
-      [-79.383, 43.652], [-79.397, 43.652], [-79.397, 43.637],
-    ]] },
-  },
-  {
-    name: "Chinatown / Kensington",
-    color: "#ef4444",
-    polygon: { type: "Polygon", coordinates: [[
-      [-79.397, 43.652], [-79.383, 43.652],
-      [-79.383, 43.690], [-79.397, 43.690], [-79.397, 43.652],
-    ]] },
-  },
-  {
-    name: "Financial / St. Lawrence",
-    color: "#22c55e",
-    polygon: { type: "Polygon", coordinates: [[
-      [-79.383, 43.638], [-79.375, 43.637], [-79.363, 43.638],
-      [-79.363, 43.652], [-79.383, 43.652], [-79.383, 43.638],
-    ]] },
-  },
-  {
-    name: "Downtown Yonge / Church-Wellesley",
-    color: "#a855f7",
-    polygon: { type: "Polygon", coordinates: [[
-      [-79.383, 43.652], [-79.363, 43.652],
-      [-79.363, 43.690], [-79.383, 43.690], [-79.383, 43.652],
-    ]] },
-  },
-  {
-    name: "Corktown / Distillery",
-    color: "#f97316",
-    polygon: { type: "Polygon", coordinates: [[
-      [-79.363, 43.641], [-79.350, 43.642], [-79.340, 43.644],
-      [-79.320, 43.648], [-79.320, 43.652], [-79.363, 43.652], [-79.363, 43.641],
-    ]] },
-  },
-  {
-    name: "Cabbagetown / Regent Park",
-    color: "#06b6d4",
-    polygon: { type: "Polygon", coordinates: [[
-      [-79.363, 43.652], [-79.320, 43.652],
-      [-79.320, 43.690], [-79.363, 43.690], [-79.363, 43.652],
-    ]] },
-  },
+// ── Voronoi zone computation ──
+// Zones are computed from seed points using Delaunay/Voronoi tessellation,
+// then clipped to a land polygon that follows the Toronto shoreline.
+// This produces organic, natural-looking boundaries that tile all visible land.
+
+import { Delaunay } from "d3-delaunay";
+
+// Seed points for residential neighborhoods (same as backend)
+const RESIDENTIAL_SEEDS = [
+  { name: "Liberty Village / Exhibition",      lng: -79.411, lat: 43.640, color: "#10b981" },
+  { name: "Queen West / Trinity-Bellwoods",    lng: -79.416, lat: 43.670, color: "#f59e0b" },
+  { name: "Entertainment / Harbourfront",      lng: -79.390, lat: 43.643, color: "#3b82f6" },
+  { name: "Chinatown / Kensington",            lng: -79.392, lat: 43.668, color: "#ef4444" },
+  { name: "Financial / St. Lawrence",          lng: -79.373, lat: 43.645, color: "#22c55e" },
+  { name: "Downtown Yonge / Church-Wellesley", lng: -79.373, lat: 43.668, color: "#a855f7" },
+  { name: "Corktown / Distillery",             lng: -79.348, lat: 43.650, color: "#f97316" },
+  { name: "Cabbagetown / Regent Park",         lng: -79.348, lat: 43.670, color: "#06b6d4" },
 ];
 
-// ── Work Districts (8) ──
-// Focused employment clusters; do NOT need to tile 100%.
-const WORK_ZONES: Array<{ name: string; color: string; polygon: GeoJSON.Polygon }> = [
-  {
-    name: "Financial District",
-    color: "#2563eb",
-    polygon: { type: "Polygon", coordinates: [[
-      [-79.387, 43.644], [-79.374, 43.644],
-      [-79.374, 43.653], [-79.387, 43.653], [-79.387, 43.644],
-    ]] },
-  },
-  {
-    name: "Entertainment District",
-    color: "#7c3aed",
-    polygon: { type: "Polygon", coordinates: [[
-      [-79.400, 43.642], [-79.386, 43.642],
-      [-79.386, 43.651], [-79.400, 43.651], [-79.400, 43.642],
-    ]] },
-  },
-  {
-    name: "Tech Corridor",
-    color: "#0891b2",
-    polygon: { type: "Polygon", coordinates: [[
-      [-79.420, 43.636], [-79.405, 43.636],
-      [-79.405, 43.645], [-79.420, 43.645], [-79.420, 43.636],
-    ]] },
-  },
-  {
-    name: "UofT District",
-    color: "#1d4ed8",
-    polygon: { type: "Polygon", coordinates: [[
-      [-79.401, 43.658], [-79.388, 43.658],
-      [-79.388, 43.669], [-79.401, 43.669], [-79.401, 43.658],
-    ]] },
-  },
-  {
-    name: "TMU District",
-    color: "#0369a1",
-    polygon: { type: "Polygon", coordinates: [[
-      [-79.385, 43.654], [-79.375, 43.654],
-      [-79.375, 43.664], [-79.385, 43.664], [-79.385, 43.654],
-    ]] },
-  },
-  {
-    name: "Government District",
-    color: "#b91c1c",
-    polygon: { type: "Polygon", coordinates: [[
-      [-79.396, 43.652], [-79.383, 43.652],
-      [-79.383, 43.666], [-79.396, 43.666], [-79.396, 43.652],
-    ]] },
-  },
-  {
-    name: "Hospital Row",
-    color: "#dc2626",
-    polygon: { type: "Polygon", coordinates: [[
-      [-79.393, 43.655], [-79.383, 43.655],
-      [-79.383, 43.668], [-79.393, 43.668], [-79.393, 43.655],
-    ]] },
-  },
-  {
-    name: "CNE / Exhibition Place",
-    color: "#ca8a04",
-    polygon: { type: "Polygon", coordinates: [[
-      [-79.420, 43.633], [-79.405, 43.633],
-      [-79.405, 43.639], [-79.420, 43.639], [-79.420, 43.633],
-    ]] },
-  },
+// Seed points for work districts (same as backend)
+// bounds = [min_lng, min_lat, max_lng, max_lat] from original rectangles on main
+const WORK_SEEDS = [
+  { name: "Financial District",     lng: -79.3805, lat: 43.6485, color: "#2563eb", bounds: [-79.387, 43.644, -79.374, 43.653] as const },
+  { name: "Entertainment District", lng: -79.393,  lat: 43.6465, color: "#7c3aed", bounds: [-79.400, 43.642, -79.386, 43.651] as const },
+  { name: "Tech Corridor",          lng: -79.4125, lat: 43.6405, color: "#0891b2", bounds: [-79.420, 43.636, -79.405, 43.645] as const },
+  { name: "UofT District",          lng: -79.3945, lat: 43.6635, color: "#1d4ed8", bounds: [-79.401, 43.658, -79.388, 43.669] as const },
+  { name: "TMU District",           lng: -79.380,  lat: 43.659,  color: "#0369a1", bounds: [-79.385, 43.654, -79.375, 43.664] as const },
+  { name: "Government District",    lng: -79.3895, lat: 43.659,  color: "#b91c1c", bounds: [-79.396, 43.652, -79.383, 43.666] as const },
+  { name: "Hospital Row",           lng: -79.388,  lat: 43.6615, color: "#dc2626", bounds: [-79.393, 43.655, -79.383, 43.668] as const },
+  { name: "CNE / Exhibition Place", lng: -79.4125, lat: 43.636,  color: "#ca8a04", bounds: [-79.420, 43.633, -79.405, 43.639] as const },
 ];
+const WORK_BUFFER = 0.003; // ~300m buffer around original bounds
+
+// Land polygon: extended clip boundary with Toronto shoreline on south edge.
+// Covers full visible viewport at minZoom 13 (well beyond maxBounds).
+// MUST be counter-clockwise for Sutherland-Hodgman clipping (isInside test).
+const LAND_POLYGON: [number, number][] = [
+  // Start NW, go CCW: west edge down, shoreline west-to-east, east edge up, top edge west
+  [-79.46, 43.71],
+  [-79.46, 43.633],    // SW: Exhibition / Ontario Place waterfront
+  // Shoreline waypoints (west to east)
+  [-79.420, 43.635],   // CNE shoreline
+  [-79.405, 43.634],   // Bathurst Quay
+  [-79.395, 43.636],   // Spadina Quay / HTO Park
+  [-79.383, 43.637],   // York Quay / Harbourfront Centre
+  [-79.373, 43.638],   // Yonge Quay / Jack Layton Ferry Terminal
+  [-79.363, 43.639],   // Jarvis slip
+  [-79.350, 43.641],   // Sugar Beach / Sherbourne Common
+  [-79.340, 43.644],   // Keating Channel / Villiers Island
+  [-79.330, 43.646],   // Cherry Beach approach
+  [-79.30, 43.648],    // East Bayfront / Port Lands
+  // East edge up to NE
+  [-79.30, 43.71],
+  // Close
+  [-79.46, 43.71],
+];
+
+// Voronoi bounding box (must cover LAND_POLYGON entirely)
+const VORONOI_BOUNDS: [number, number, number, number] = [-79.46, 43.63, -79.30, 43.71];
+
+/**
+ * Sutherland-Hodgman polygon clipping algorithm.
+ * Clips `subject` polygon against `clip` polygon.
+ * Both are arrays of [x, y] coordinate pairs (assumed closed: last != first is ok).
+ */
+function clipPolygon(
+  subject: [number, number][],
+  clip: [number, number][],
+): [number, number][] {
+  let output = subject.slice();
+  for (let i = 0; i < clip.length - 1; i++) {
+    if (output.length === 0) return [];
+    const edgeStart = clip[i];
+    const edgeEnd = clip[i + 1];
+    const input = output;
+    output = [];
+    for (let j = 0; j < input.length; j++) {
+      const current = input[j];
+      const prev = input[(j + input.length - 1) % input.length];
+      const currInside = isInside(current, edgeStart, edgeEnd);
+      const prevInside = isInside(prev, edgeStart, edgeEnd);
+      if (currInside) {
+        if (!prevInside) {
+          output.push(intersect(prev, current, edgeStart, edgeEnd));
+        }
+        output.push(current);
+      } else if (prevInside) {
+        output.push(intersect(prev, current, edgeStart, edgeEnd));
+      }
+    }
+  }
+  return output;
+}
+
+function isInside(p: [number, number], a: [number, number], b: [number, number]): boolean {
+  return (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]) >= 0;
+}
+
+function intersect(
+  a: [number, number], b: [number, number],
+  c: [number, number], d: [number, number],
+): [number, number] {
+  const a1 = b[1] - a[1], b1 = a[0] - b[0], c1 = a1 * a[0] + b1 * a[1];
+  const a2 = d[1] - c[1], b2 = c[0] - d[0], c2 = a2 * c[0] + b2 * c[1];
+  const det = a1 * b2 - a2 * b1;
+  return [(c1 * b2 - c2 * b1) / det, (a1 * c2 - a2 * c1) / det];
+}
+
+/**
+ * Compute Voronoi zones from seed points, clipped to the land polygon.
+ */
+function computeVoronoiZones(
+  seeds: Array<{ name: string; lng: number; lat: number; color: string }>,
+): Array<{ name: string; color: string; polygon: GeoJSON.Polygon }> {
+  const delaunay = Delaunay.from(seeds, s => s.lng, s => s.lat);
+  const voronoi = delaunay.voronoi(VORONOI_BOUNDS);
+  return seeds.map((seed, i) => {
+    const rawCell = voronoi.cellPolygon(i);
+    // rawCell is closed: [[x,y], ..., [x,y]] where first == last
+    const clipped = clipPolygon(rawCell as [number, number][], LAND_POLYGON);
+    // Close the polygon for GeoJSON
+    const coords = clipped.slice();
+    if (coords.length > 0 && (coords[0][0] !== coords[coords.length - 1][0] || coords[0][1] !== coords[coords.length - 1][1])) {
+      coords.push(coords[0]);
+    }
+    return {
+      name: seed.name,
+      color: seed.color,
+      polygon: { type: "Polygon" as const, coordinates: [coords] },
+    };
+  });
+}
+
+// ── Residential Neighborhoods (8) ──
+// Voronoi cells from seed points, clipped to land polygon (shoreline-aware).
+const RESIDENTIAL_ZONES = computeVoronoiZones(RESIDENTIAL_SEEDS);
+
+// ── Work Districts (8) ──
+// Voronoi cells clipped to both land polygon AND local envelope (buffered original bounds).
+// This gives organic Voronoi edges between neighboring districts without expanding to fill the map.
+const WORK_ZONES = (() => {
+  const delaunay = Delaunay.from(WORK_SEEDS, s => s.lng, s => s.lat);
+  const voronoi = delaunay.voronoi(VORONOI_BOUNDS);
+  return WORK_SEEDS.map((seed, i) => {
+    const rawCell = voronoi.cellPolygon(i) as [number, number][];
+    // Clip to land polygon (shoreline), then to local envelope
+    const b = seed.bounds;
+    const localEnvelope: [number, number][] = [
+      [b[0] - WORK_BUFFER, b[1] - WORK_BUFFER],
+      [b[2] + WORK_BUFFER, b[1] - WORK_BUFFER],
+      [b[2] + WORK_BUFFER, b[3] + WORK_BUFFER],
+      [b[0] - WORK_BUFFER, b[3] + WORK_BUFFER],
+      [b[0] - WORK_BUFFER, b[1] - WORK_BUFFER],
+    ];
+    const clipped = clipPolygon(clipPolygon(rawCell, LAND_POLYGON), localEnvelope);
+    const coords = clipped.slice();
+    if (coords.length > 0 && (coords[0][0] !== coords[coords.length - 1][0] || coords[0][1] !== coords[coords.length - 1][1])) {
+      coords.push(coords[0]);
+    }
+    return {
+      name: seed.name,
+      color: seed.color,
+      polygon: { type: "Polygon" as const, coordinates: [coords] },
+    };
+  });
+})();
 
 /** Height-based color gradient (for default layer when not in a region). */
 function buildingColorExpression(
