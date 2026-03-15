@@ -186,6 +186,12 @@ export class ApiClient {
       `/api/sessions/${sessionId}/posts?${params}`,
     );
   }
+
+  // ── Zones (static, no session required) ──
+
+  getZones(): Promise<GeoJSON.FeatureCollection> {
+    return this.request<GeoJSON.FeatureCollection>("/api/zones");
+  }
 }
 
 // ── WebSocket wrapper ────────────────────────────────────────────────────────
