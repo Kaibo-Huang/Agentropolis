@@ -217,6 +217,7 @@ h1, h2, h3, h4, h5, h6 {
   margin: 0;
   margin-right: 0.5rem;
   color: #ffffff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
 }
 .hud-controls {
   display: flex;
@@ -305,8 +306,8 @@ h1, h2, h3, h4, h5, h6 {
   background: transparent;
   color: #ffffff;
   padding: 0;
-  padding-left: 1.5px;
-  font-size: 0.8rem;
+  padding-left: 1px;
+  font-size: 0.9rem;
   line-height: 1;
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
 }
