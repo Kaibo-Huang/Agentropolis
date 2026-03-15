@@ -1,9 +1,10 @@
 """
-Toronto zone definitions for Agentropolis: residential neighborhoods and work districts.
+Toronto zone definitions for Agentropolis: unified residential + work district map.
 
-Residential neighborhoods tile 100% of the viewable map area using Voronoi cells
-computed from seed points, clipped to a land polygon that follows the Toronto
-shoreline. Work districts are focused employment clusters.
+All 16 zones (8 residential neighborhoods + 8 work districts) are computed from
+a single Voronoi diagram, giving continuous coverage of the city with no gaps.
+Each zone has a `type` ("residential" or "work") so the frontend can style them
+differently.
 
 Voronoi cells produce organic, natural-looking boundaries that:
 - Cover 100% of visible land with no gaps
@@ -16,7 +17,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from shapely.geometry import MultiPoint, Point, Polygon, box, mapping
+from shapely.geometry import MultiPoint, Point, Polygon, mapping
 from shapely.ops import voronoi_diagram
 
 logger = logging.getLogger(__name__)
@@ -33,14 +34,14 @@ LAND_POLYGON = Polygon([
     # East edge down to shoreline
     (-79.24, 43.648),
     # Shoreline waypoints (east to west) — refined to track actual waterfront
-    (-79.30, 43.648),    # East Bayfront / Port Lands
-    (-79.330, 43.646),   # Cherry Beach approach
-    (-79.340, 43.644),   # Keating Channel / Villiers Island
-    (-79.350, 43.641),   # Sugar Beach / Sherbourne Common
-    (-79.358, 43.640),   # Parliament slip
-    (-79.363, 43.639),   # Jarvis slip
-    (-79.368, 43.638),   # Jarvis / Queens Quay
-    (-79.373, 43.638),   # Yonge Quay / Jack Layton Ferry Terminal
+    (-79.30, 43.650),    # East Bayfront / Port Lands
+    (-79.330, 43.648),   # Cherry Beach approach
+    (-79.340, 43.647),   # Keating Channel / Villiers Island
+    (-79.350, 43.6465),  # Sugar Beach / Sherbourne Common
+    (-79.358, 43.6455),  # Parliament slip
+    (-79.363, 43.642),   # Jarvis slip
+    (-79.368, 43.641),   # Jarvis / Queens Quay
+    (-79.373, 43.640),   # Yonge Quay / Jack Layton Ferry Terminal
     (-79.378, 43.637),   # York / Simcoe slip
     (-79.383, 43.637),   # York Quay / Harbourfront Centre
     (-79.389, 43.636),   # Rees St slip
@@ -59,21 +60,20 @@ LAND_POLYGON = Polygon([
 ])
 
 # ---------------------------------------------------------------------------
-# Seed points — one per zone, used to generate Voronoi cells
+# Seed points — all zones in a single dict, tagged by type
 # ---------------------------------------------------------------------------
 
-RESIDENTIAL_SEEDS: dict[str, tuple[float, float]] = {
+ZONE_SEEDS: dict[str, tuple[float, float]] = {
+    # Residential neighborhoods
     "Liberty Village / Exhibition":      (-79.411, 43.640),
     "Queen West / Trinity-Bellwoods":    (-79.416, 43.670),
     "Entertainment / Harbourfront":      (-79.390, 43.643),
     "Chinatown / Kensington":            (-79.392, 43.668),
-    "Financial / St. Lawrence":          (-79.373, 43.645),
+    "Financial / St. Lawrence":          (-79.373, 43.649),
     "Downtown Yonge / Church-Wellesley": (-79.373, 43.668),
-    "Corktown / Distillery":             (-79.348, 43.650),
+    "Corktown / Distillery":             (-79.348, 43.654),
     "Cabbagetown / Regent Park":         (-79.348, 43.670),
-}
-
-WORK_DISTRICT_SEEDS: dict[str, tuple[float, float]] = {
+    # Work districts
     "Financial District":    (-79.3805, 43.6485),
     "Entertainment District":(-79.393, 43.6465),
     "Tech Corridor":         (-79.4125, 43.6405),
@@ -84,129 +84,126 @@ WORK_DISTRICT_SEEDS: dict[str, tuple[float, float]] = {
     "CNE / Exhibition Place":(-79.4125, 43.636),
 }
 
-# Original work district rectangular bounds (from main).
-# Used as local clip envelopes so Voronoi cells don't expand beyond their area.
-# Format: (min_lng, min_lat, max_lng, max_lat)
-_WORK_DISTRICT_BOUNDS: dict[str, tuple[float, float, float, float]] = {
-    "Financial District":     (-79.387, 43.644, -79.374, 43.653),
-    "Entertainment District": (-79.400, 43.642, -79.386, 43.651),
-    "Tech Corridor":          (-79.420, 43.636, -79.405, 43.645),
-    "UofT District":          (-79.401, 43.658, -79.388, 43.669),
-    "TMU District":           (-79.385, 43.654, -79.375, 43.664),
-    "Government District":    (-79.396, 43.652, -79.383, 43.666),
-    "Hospital Row":           (-79.393, 43.655, -79.383, 43.668),
-    "CNE / Exhibition Place": (-79.420, 43.633, -79.405, 43.639),
+# Backward-compat aliases so existing code can still reference separate dicts
+RESIDENTIAL_SEEDS: dict[str, tuple[float, float]] = {
+    k: v for k, v in ZONE_SEEDS.items() if k in {
+        "Liberty Village / Exhibition", "Queen West / Trinity-Bellwoods",
+        "Entertainment / Harbourfront", "Chinatown / Kensington",
+        "Financial / St. Lawrence", "Downtown Yonge / Church-Wellesley",
+        "Corktown / Distillery", "Cabbagetown / Regent Park",
+    }
 }
-_WORK_BUFFER = 0.003  # ~300m buffer around original bounds
+WORK_DISTRICT_SEEDS: dict[str, tuple[float, float]] = {
+    k: v for k, v in ZONE_SEEDS.items() if k not in RESIDENTIAL_SEEDS
+}
 
 # ---------------------------------------------------------------------------
-# Zone metadata (colors + descriptions, keyed by name)
+# Zone metadata (colors + descriptions + type, keyed by name)
 # ---------------------------------------------------------------------------
 
-_RESIDENTIAL_META: dict[str, dict[str, str]] = {
+_ZONE_META: dict[str, dict[str, str]] = {
+    # Residential
     "Liberty Village / Exhibition": {
+        "type": "residential",
         "color": "#10b981",
         "description": "Liberty Village, CNE, Fort York, CityPlace",
     },
     "Queen West / Trinity-Bellwoods": {
+        "type": "residential",
         "color": "#f59e0b",
         "description": "Queen West, Ossington, Trinity-Bellwoods, Little Portugal",
     },
     "Entertainment / Harbourfront": {
+        "type": "residential",
         "color": "#3b82f6",
         "description": "Entertainment District, Harbourfront Centre, Rogers Centre",
     },
     "Chinatown / Kensington": {
+        "type": "residential",
         "color": "#ef4444",
         "description": "Kensington Market, Chinatown, U of T, Annex, Baldwin Village",
     },
     "Financial / St. Lawrence": {
+        "type": "residential",
         "color": "#22c55e",
         "description": "Bay Street, Union Station, St. Lawrence Market, PATH",
     },
     "Downtown Yonge / Church-Wellesley": {
+        "type": "residential",
         "color": "#a855f7",
         "description": "Dundas Square, Church-Wellesley Village, TMU area, Allan Gardens",
     },
     "Corktown / Distillery": {
+        "type": "residential",
         "color": "#f97316",
         "description": "Distillery District, Corktown, West Don Lands, lower Regent Park",
     },
     "Cabbagetown / Regent Park": {
+        "type": "residential",
         "color": "#06b6d4",
         "description": "Cabbagetown, upper Regent Park, Riverdale, north of Carlton",
     },
-}
-
-_WORK_DISTRICT_META: dict[str, dict[str, str]] = {
+    # Work districts
     "Financial District": {
+        "type": "work",
         "color": "#2563eb",
         "description": "Bay Street banks, TD/BMO/RBC/Scotia towers, PATH",
     },
     "Entertainment District": {
+        "type": "work",
         "color": "#7c3aed",
         "description": "King West, theatres, Rogers Centre, Scotiabank Arena",
     },
     "Tech Corridor": {
+        "type": "work",
         "color": "#0891b2",
         "description": "Liberty Village tech offices, startup lofts",
     },
     "UofT District": {
+        "type": "work",
         "color": "#1d4ed8",
         "description": "U of T St. George campus, Robarts, Hart House, Bahen",
     },
     "TMU District": {
+        "type": "work",
         "color": "#0369a1",
         "description": "TMU campus, Yonge-Dundas Square, Student Learning Centre",
     },
     "Government District": {
+        "type": "work",
         "color": "#b91c1c",
         "description": "Queen's Park, City Hall, Ontario Legislature, ministries",
     },
     "Hospital Row": {
+        "type": "work",
         "color": "#dc2626",
         "description": "UHN Toronto General, SickKids, Mount Sinai, Princess Margaret",
     },
     "CNE / Exhibition Place": {
+        "type": "work",
         "color": "#ca8a04",
         "description": "Exhibition Place, Enercare Centre, BMO Field, Ontario Place",
     },
 }
 
+# Backward-compat aliases for code that references the old separate dicts
+_RESIDENTIAL_META = {k: v for k, v in _ZONE_META.items() if v["type"] == "residential"}
+_WORK_DISTRICT_META = {k: v for k, v in _ZONE_META.items() if v["type"] == "work"}
+
 # ---------------------------------------------------------------------------
-# Voronoi computation (runs once at module load, cached)
+# Unified Voronoi computation (runs once at module load, cached)
 # ---------------------------------------------------------------------------
 
 
-def _compute_voronoi_cells(
+def _compute_unified_voronoi(
     seeds: dict[str, tuple[float, float]],
     clip_polygon: Polygon,
 ) -> dict[str, Polygon]:
-    """Compute Voronoi cells from seed points, clipped to land polygon."""
-    points = MultiPoint([Point(lng, lat) for lng, lat in seeds.values()])
-    regions = voronoi_diagram(points, envelope=clip_polygon)
+    """Compute Voronoi cells from ALL seed points, clipped to land polygon.
 
-    cells: dict[str, Polygon] = {}
-    for name, (lng, lat) in seeds.items():
-        seed_pt = Point(lng, lat)
-        for cell in regions.geoms:
-            if cell.contains(seed_pt):
-                clipped = cell.intersection(clip_polygon)
-                cells[name] = clipped
-                break
-    return cells
-
-
-def _compute_work_district_cells(
-    seeds: dict[str, tuple[float, float]],
-    clip_polygon: Polygon,
-) -> dict[str, Polygon]:
-    """Compute Voronoi cells for work districts, clipped to local envelopes.
-
-    Each cell is intersected with both the land polygon (shoreline) and a
-    buffered version of the district's original rectangular bounds, so
-    districts get organic Voronoi edges where they neighbor each other
-    but don't expand beyond their intended area.
+    All 16 seeds participate in one diagram, producing continuous coverage
+    with no gaps. Work district zones are naturally small because their seeds
+    are densely clustered downtown.
     """
     points = MultiPoint([Point(lng, lat) for lng, lat in seeds.values()])
     regions = voronoi_diagram(points, envelope=clip_polygon)
@@ -217,23 +214,19 @@ def _compute_work_district_cells(
         for cell in regions.geoms:
             if cell.contains(seed_pt):
                 clipped = cell.intersection(clip_polygon)
-                # Clip to local envelope (buffered original bounds)
-                ob = _WORK_DISTRICT_BOUNDS[name]
-                local_env = box(
-                    ob[0] - _WORK_BUFFER, ob[1] - _WORK_BUFFER,
-                    ob[2] + _WORK_BUFFER, ob[3] + _WORK_BUFFER,
-                )
-                clipped = clipped.intersection(local_env)
                 cells[name] = clipped
                 break
     return cells
 
 
-RESIDENTIAL_CELLS = _compute_voronoi_cells(RESIDENTIAL_SEEDS, LAND_POLYGON)
-WORK_DISTRICT_CELLS = _compute_work_district_cells(WORK_DISTRICT_SEEDS, LAND_POLYGON)
+ALL_CELLS = _compute_unified_voronoi(ZONE_SEEDS, LAND_POLYGON)
+
+# Split into residential/work for backward compat
+RESIDENTIAL_CELLS = {k: v for k, v in ALL_CELLS.items() if k in RESIDENTIAL_SEEDS}
+WORK_DISTRICT_CELLS = {k: v for k, v in ALL_CELLS.items() if k in WORK_DISTRICT_SEEDS}
 
 # ---------------------------------------------------------------------------
-# Build RESIDENTIAL_NEIGHBORHOODS / WORK_DISTRICTS dicts (backward compat)
+# Build zone dicts (backward compat)
 # ---------------------------------------------------------------------------
 
 
@@ -280,9 +273,6 @@ for _name, _zone in RESIDENTIAL_NEIGHBORHOODS.items():
     ALL_ZONE_BOUNDS[_name] = _zone["bounds"]
 for _name, _zone in WORK_DISTRICTS.items():
     ALL_ZONE_BOUNDS[_name] = _zone["bounds"]
-
-# Merged cell lookup for point-in-polygon checks
-ALL_CELLS: dict[str, Polygon] = {**RESIDENTIAL_CELLS, **WORK_DISTRICT_CELLS}
 
 # ---------------------------------------------------------------------------
 # Neighborhood name lists (convenience)
@@ -346,6 +336,7 @@ def _cells_to_geojson(
             "type": "Feature",
             "properties": {
                 "name": name,
+                "type": meta[name]["type"],
                 "color": meta[name]["color"],
                 "description": meta[name]["description"],
             },
@@ -354,9 +345,16 @@ def _cells_to_geojson(
     return {"type": "FeatureCollection", "features": features}
 
 
+def get_zones_geojson() -> dict:
+    """Return all 16 zones as a single GeoJSON FeatureCollection."""
+    return _cells_to_geojson(ALL_CELLS, _ZONE_META)
+
+
 def get_residential_geojson() -> dict:
-    return _cells_to_geojson(RESIDENTIAL_CELLS, _RESIDENTIAL_META)
+    """Return residential zones only (backward compat)."""
+    return _cells_to_geojson(RESIDENTIAL_CELLS, _ZONE_META)
 
 
 def get_work_district_geojson() -> dict:
-    return _cells_to_geojson(WORK_DISTRICT_CELLS, _WORK_DISTRICT_META)
+    """Return work district zones only (backward compat)."""
+    return _cells_to_geojson(WORK_DISTRICT_CELLS, _ZONE_META)
