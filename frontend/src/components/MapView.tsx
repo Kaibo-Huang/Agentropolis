@@ -13,7 +13,11 @@ export default function MapView() {
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const scene = new TorontoMapboxScene({ container: containerRef.current });
+    const landingFirstView = useSimulationStore.getState().showWelcome;
+    const scene = new TorontoMapboxScene({
+      container: containerRef.current,
+      landingFirstView,
+    });
     sceneRef.current = scene;
 
     scene.startRenderLoop(

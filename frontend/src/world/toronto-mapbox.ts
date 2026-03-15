@@ -31,11 +31,15 @@ export interface MapFollower {
 /** Hex colors for building height gradient (low → high). Default: warm to cool. */
 export type BuildingColorPalette = readonly [string, string, ...string[]];
 
+const MAPBOX_STYLE = "mapbox://styles/danielp1231231/cmmr3ha5d003q01s4gvpsagc0";
+
 export interface TorontoMapboxOptions {
   container: HTMLElement;
   onResize?: () => void;
   /** Colors for 3D buildings by height (low to high). 2–5 hex colors recommended. */
   buildingColors?: BuildingColorPalette;
+  /** True when landing page is shown first: start at Earth view for zoom-in. */
+  landingFirstView?: boolean;
 }
 
 // Toronto downtown
@@ -705,9 +709,11 @@ export class TorontoMapboxScene {
   // Landing page: street-level fly-through 88 Queens Quay → CN Tower → back
   private landingStartTime: number = -1;
   private isLandingRoute: boolean = false;
+  /** True after the first Earth→Toronto zoom-in has run (only on first launch). */
+  private initialZoomDone: boolean = false;
 
   constructor(options: TorontoMapboxOptions) {
-    const { container, buildingColors } = options;
+    const { container, buildingColors, landingFirstView } = options;
     this.container = container;
     this.buildingColors = buildingColors ?? DEFAULT_BUILDING_PALETTE;
     const token = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || "";
@@ -722,23 +728,25 @@ export class TorontoMapboxScene {
       return;
     }
 
+    const startAtEarth = landingFirstView === true;
+    const torontoBounds: [[number, number], [number, number]] = [
+      [-79.42, 43.62], // SW: Bathurst & lakeshore
+      [-79.34, 43.69], // NE: just east of DVP & Bloor
+    ];
     this.map = new mapboxgl.Map({
       container,
       accessToken: token,
-      style: "mapbox://styles/mapbox/standard",
+      style: MAPBOX_STYLE,
       center: TORONTO_CENTER,
-      zoom: 15.2,
-      minZoom: 13,
+      zoom: startAtEarth ? 2 : 15.2,
+      minZoom: 2,
       maxZoom: 18,
-      pitch: 40,
+      pitch: startAtEarth ? 0 : 40,
       maxPitch: 60,
-      bearing: -20,
+      bearing: startAtEarth ? 0 : -20,
       antialias: true,
-      // Downtown Toronto core: Bathurst → DVP, waterfront → Bloor
-      maxBounds: [
-        [-79.42, 43.62], // SW: Bathurst & lakeshore
-        [-79.34, 43.69], // NE: just east of DVP & Bloor
-      ],
+      // Only restrict to downtown when not in landing (Earth view needs no bounds)
+      ...(startAtEarth ? {} : { maxBounds: torontoBounds }),
     });
 
     this.map.addControl(new GentleZoomControl(), "bottom-right");
@@ -1027,16 +1035,34 @@ export class TorontoMapboxScene {
   /** Start street-level fly-through from 88 Queens Quay → CN Tower → back (landing page). */
   startLandingRoute(): void {
     this.isLandingRoute = true;
-    this.landingStartTime = performance.now();
-    if (this.map) {
-      const k = LANDING_ROUTE[0];
-      this.map.jumpTo({
-        center: [k.lng, k.lat],
-        zoom: LANDING_ZOOM,
-        pitch: LANDING_PITCH,
-        bearing: k.bearing,
-      });
+    if (!this.map) return;
+
+    const k = LANDING_ROUTE[0];
+    const dest = { center: [k.lng, k.lat] as [number, number], zoom: LANDING_ZOOM, pitch: LANDING_PITCH, bearing: k.bearing };
+
+    if (!this.initialZoomDone) {
+      this.initialZoomDone = true;
+      const zoomInFromEarth = () => {
+        this.map!.flyTo({
+          ...dest,
+          duration: 4200,
+          essential: true,
+        });
+        this.map!.once("moveend", () => {
+          this.landingStartTime = performance.now();
+        });
+      };
+      if (this.map.getZoom() > 3) {
+        this.map.jumpTo({ center: TORONTO_CENTER, zoom: 2, pitch: 0, bearing: 0 });
+        this.map.once("moveend", zoomInFromEarth);
+      } else {
+        zoomInFromEarth();
+      }
+      return;
     }
+
+    this.landingStartTime = performance.now();
+    this.map.jumpTo(dest);
   }
 
   /** Stop landing route and ease to default simulation view with 3D buildings. */
@@ -1044,6 +1070,10 @@ export class TorontoMapboxScene {
     this.isLandingRoute = false;
     this.landingStartTime = -1;
     if (this.map) {
+      this.map.setMaxBounds([
+        [-79.42, 43.62],
+        [-79.34, 43.69],
+      ]);
       this.map.easeTo({
         center: TORONTO_CENTER,
         zoom: 15.2,
