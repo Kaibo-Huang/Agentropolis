@@ -212,16 +212,17 @@ def compute_position(
         if active_effects.gathering_zones:
             for gz in active_effects.gathering_zones:
                 # Skip zones outside their active time window
-                s = gz.get("start_hour")
-                e = gz.get("end_hour")
-                if s is not None and e is not None and s != e:
+                # Default to 9–16 if hours missing (old events without time fields)
+                s = gz.get("start_hour", 9)
+                e = gz.get("end_hour", 16)
+                if s != e:
                     if s < e:
                         if not (s <= hour < e):
                             continue
                     else:  # wraps midnight, e.g. 20–2
                         if not (hour >= s or hour < e):
                             continue
-                # s == e or missing → always active
+                # s == e → 24/7 (e.g. hospital emergencies)
 
                 zone_name = gz.get("zone_name", "")
                 pull = gz.get("pull_strength", 0.0)

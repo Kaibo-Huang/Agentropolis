@@ -566,7 +566,7 @@ async def _generate_follower_variations(
         updates.append(update)
 
     # ── LLM tweet generation — rate modified by events ──
-    effective_tweet_rate = 0.10
+    effective_tweet_rate = 0.012
     if active_effects:
         effective_tweet_rate *= active_effects.tweet_rate_multiplier
     tweeters = select_tweeters(followers, rate=effective_tweet_rate)
@@ -581,10 +581,13 @@ async def _generate_follower_variations(
             ):
                 tweet_sentiment = active_effects.tweet_sentiment if active_effects else None
                 event_prompts = active_effects.event_prompts if active_effects else None
+                gathering_zones = active_effects.gathering_zones if active_effects else None
                 prompt = build_tweet_prompt(
                     archetype, archetype_response, tweeters,
                     tweet_sentiment=tweet_sentiment,
                     event_prompts=event_prompts if event_prompts else None,
+                    gathering_zones=gathering_zones if gathering_zones else None,
+                    hour=toronto_hour,
                 )
                 result = await rt.call(tweet_agent, prompt)
                 batch = result.structured
