@@ -37,14 +37,14 @@ DEFAULT_SOCIAL_CLASS_WEIGHTS: list[float] = [0.25, 0.50, 0.25]
 # ---------------------------------------------------------------------------
 
 SOCIAL_CLASS_WEIGHTS_BY_NEIGHBORHOOD: dict[str, list[float]] = {
-    "Liberty Village / Exhibition": [0.12, 0.58, 0.30],
+    "Liberty Village / Exhibition": [0.15, 0.55, 0.30],
     "Queen West / Trinity-Bellwoods": [0.18, 0.52, 0.30],
-    "Entertainment / Harbourfront": [0.15, 0.50, 0.35],
-    "Chinatown / Kensington": [0.25, 0.55, 0.20],
-    "Financial / St. Lawrence": [0.08, 0.40, 0.52],
-    "Downtown Yonge / Church-Wellesley": [0.20, 0.50, 0.30],
-    "Corktown / Distillery": [0.22, 0.55, 0.23],
-    "Cabbagetown / Regent Park": [0.30, 0.52, 0.18],
+    "Entertainment / Harbourfront": [0.17, 0.51, 0.32],
+    "Chinatown / Kensington": [0.22, 0.53, 0.25],
+    "Financial / St. Lawrence": [0.12, 0.45, 0.43],
+    "Downtown Yonge / Church-Wellesley": [0.19, 0.51, 0.30],
+    "Corktown / Distillery": [0.20, 0.54, 0.26],
+    "Cabbagetown / Regent Park": [0.25, 0.52, 0.23],
 }
 
 # ---------------------------------------------------------------------------

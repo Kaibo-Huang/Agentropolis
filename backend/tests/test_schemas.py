@@ -17,6 +17,7 @@ class TestArchetypeAction:
     """ArchetypeAction validates action_type, duration, and thinking."""
 
     def test_valid_action_work(self):
+        from src.agents.schemas import ActionParams
         action = ArchetypeAction(
             action_type="work",
             duration=8.0,
@@ -24,7 +25,7 @@ class TestArchetypeAction:
         )
         assert action.action_type == "work"
         assert action.duration == 8.0
-        assert action.action_params == {}
+        assert action.action_params == ActionParams()
 
     def test_valid_action_sleep(self):
         action = ArchetypeAction(
@@ -64,8 +65,9 @@ class TestArchetypeAction:
         assert len(action.thinking) == 200
 
     def test_action_params_defaults_to_empty_dict(self):
+        from src.agents.schemas import ActionParams
         action = ArchetypeAction(action_type="shop", duration=2.0, thinking="Buying stuff.")
-        assert action.action_params == {}
+        assert action.action_params == ActionParams()
 
     def test_action_params_accepts_dict(self):
         action = ArchetypeAction(
@@ -74,7 +76,7 @@ class TestArchetypeAction:
             thinking="Buying groceries.",
             action_params={"location": "Kensington Market"},
         )
-        assert action.action_params["location"] == "Kensington Market"
+        assert action.action_params.location == "Kensington Market"
 
 
 class TestArchetypeResponse:

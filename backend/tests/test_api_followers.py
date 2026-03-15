@@ -52,6 +52,8 @@ def _make_follower(
     f.volatility = 0.5
     f.avatar_seed = 12345
     f.avatar_params = None
+    f.home_neighborhood = "Liberty Village / Exhibition"
+    f.work_district = "Financial District"
     return f
 
 

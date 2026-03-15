@@ -8,8 +8,7 @@ as pure unit tests without any async machinery.
 import pytest
 
 from src.simulation.seeder import (
-    _proportional_distribution,
-    _company_name,
+    _pick_home_neighborhood,
     _random_position,
     _random_age,
     _random_gender,
@@ -23,93 +22,85 @@ from src.data.demographics import (
     RACE_DISTRIBUTION,
     SOCIAL_CLASSES,
 )
-from src.data.toronto_neighborhoods import NEIGHBORHOOD_BOUNDS
+from src.data.industry_mapping import EMPLOYERS, INDUSTRY_HOME_WEIGHTS, INDUSTRIES
+from src.data.toronto_zones import ALL_CELLS
 
 
-class TestProportionalDistribution:
-    """_proportional_distribution allocates totals and sums exactly."""
+class TestEmployerRoundRobin:
+    """EMPLOYERS list supports round-robin archetype assignment."""
 
-    def test_output_sums_to_total(self):
-        weights = {"a": 0.5, "b": 0.3, "c": 0.2}
-        result = _proportional_distribution(100, weights)
-        assert sum(result.values()) == 100
+    def test_employers_is_nonempty_list(self):
+        assert isinstance(EMPLOYERS, list)
+        assert len(EMPLOYERS) > 0
 
-    def test_output_keys_match_weights(self):
-        weights = {"x": 1.0, "y": 2.0, "z": 3.0}
-        result = _proportional_distribution(10, weights)
-        assert set(result.keys()) == {"x", "y", "z"}
+    def test_each_employer_has_required_keys(self):
+        for emp in EMPLOYERS:
+            assert "name" in emp, f"Employer missing 'name': {emp}"
+            assert "industry" in emp, f"Employer missing 'industry': {emp}"
+            assert "work_district" in emp, f"Employer missing 'work_district': {emp}"
 
-    def test_all_values_nonnegative(self):
-        weights = {"a": 0.1, "b": 0.9}
-        result = _proportional_distribution(50, weights)
-        for v in result.values():
-            assert v >= 0
+    def test_employer_name_is_nonempty_string(self):
+        for emp in EMPLOYERS:
+            assert isinstance(emp["name"], str)
+            assert len(emp["name"]) > 0
 
-    def test_single_key_gets_all(self):
-        result = _proportional_distribution(7, {"only": 1.0})
-        assert result == {"only": 7}
+    def test_employer_industry_is_known(self):
+        for emp in EMPLOYERS:
+            assert emp["industry"] in INDUSTRIES, (
+                f"Unknown industry '{emp['industry']}' in employer '{emp['name']}'"
+            )
 
-    def test_total_of_one(self):
-        weights = {"a": 1, "b": 1, "c": 1}
-        result = _proportional_distribution(1, weights)
-        assert sum(result.values()) == 1
+    def test_round_robin_cycles_through_all_employers(self):
+        n = len(EMPLOYERS)
+        # Cycling n * 2 times should visit every employer at least twice
+        visited = set()
+        for i in range(n * 2):
+            emp = EMPLOYERS[i % n]
+            visited.add(emp["name"])
+        assert visited == {e["name"] for e in EMPLOYERS}
 
-    def test_equal_weights_approximate_equal_distribution(self):
-        weights = {"a": 1, "b": 1, "c": 1, "d": 1}
-        result = _proportional_distribution(100, weights)
-        assert sum(result.values()) == 100
-        # All buckets should be 25
-        for v in result.values():
-            assert v == 25
-
-    def test_large_total(self):
-        weights = {"Finance": 0.2, "Tech": 0.3, "Healthcare": 0.15,
-                   "Retail": 0.1, "Manufacturing": 0.1,
-                   "Government": 0.05, "Education": 0.1}
-        result = _proportional_distribution(10000, weights)
-        assert sum(result.values()) == 10000
+    def test_industries_list_matches_employer_industries(self):
+        employer_industries = {e["industry"] for e in EMPLOYERS}
+        for ind in employer_industries:
+            assert ind in INDUSTRIES
 
 
-class TestCompanyName:
-    """_company_name generates a non-empty two-word string."""
+class TestPickHomeNeighborhood:
+    """_pick_home_neighborhood returns a valid residential neighborhood name."""
 
-    def test_returns_string(self):
-        name = _company_name("Finance", 0)
-        assert isinstance(name, str)
+    @pytest.mark.parametrize("industry", INDUSTRIES)
+    def test_returns_string_for_known_industry(self, industry):
+        result = _pick_home_neighborhood(industry)
+        assert isinstance(result, str)
+        assert len(result) > 0
 
-    def test_name_has_two_parts(self):
-        name = _company_name("Tech", 0)
-        parts = name.split()
-        assert len(parts) == 2
+    @pytest.mark.parametrize("industry", INDUSTRIES)
+    def test_result_is_in_home_weights_keys(self, industry):
+        weights_map = INDUSTRY_HOME_WEIGHTS[industry]
+        valid_neighborhoods = set(weights_map.keys())
+        for _ in range(20):
+            result = _pick_home_neighborhood(industry)
+            assert result in valid_neighborhoods, (
+                f"_pick_home_neighborhood({industry!r}) returned unexpected "
+                f"value {result!r}"
+            )
 
-    def test_unknown_industry_has_fallback(self):
-        name = _company_name("AlienIndustry", 0)
-        assert len(name) > 0
-
-    @pytest.mark.parametrize("industry", [
-        "Finance", "Tech", "Healthcare", "Retail",
-        "Manufacturing", "Government", "Education",
-    ])
-    def test_all_industries_return_valid_name(self, industry):
-        name = _company_name(industry, 0)
-        assert len(name) > 0
-
-    def test_different_indices_cycle_names(self):
-        names = {_company_name("Tech", i) for i in range(20)}
-        # Shouldn't all be identical — cycling through prefixes/suffixes
-        assert len(names) > 1
+    def test_unknown_industry_returns_some_string(self):
+        result = _pick_home_neighborhood("AlienIndustry")
+        assert isinstance(result, str)
+        assert len(result) > 0
 
 
 class TestRandomPosition:
     """_random_position returns a [lat, lng] list within expected Toronto bounds."""
 
     def test_returns_list_of_two(self):
-        pos = _random_position("Downtown Core")
+        pos = _random_position("Financial / St. Lawrence")
         assert isinstance(pos, list)
         assert len(pos) == 2
 
     def test_values_are_floats(self):
-        pos = _random_position("Downtown Core")
+        pos = _random_position("Financial / St. Lawrence")
         assert isinstance(pos[0], float)
         assert isinstance(pos[1], float)
 
@@ -119,15 +110,15 @@ class TestRandomPosition:
         assert 43.5 <= pos[0] <= 43.8
         assert -79.5 <= pos[1] <= -79.2
 
-    @pytest.mark.parametrize("region", list(NEIGHBORHOOD_BOUNDS.keys())[:5])
-    def test_known_region_within_bounding_box(self, region):
-        bounds = NEIGHBORHOOD_BOUNDS[region]
-        pos = _random_position(region)
-        assert bounds["min_lat"] <= pos[0] <= bounds["max_lat"]
-        assert bounds["min_lng"] <= pos[1] <= bounds["max_lng"]
+    @pytest.mark.parametrize("zone", list(ALL_CELLS.keys())[:5])
+    def test_known_zone_within_toronto_bounds(self, zone):
+        pos = _random_position(zone)
+        # All zones should produce positions within greater Toronto area
+        assert 43.5 <= pos[0] <= 43.8, f"lat {pos[0]} out of Toronto range"
+        assert -79.6 <= pos[1] <= -79.2, f"lng {pos[1]} out of Toronto range"
 
     def test_position_is_rounded_to_6_decimal_places(self):
-        pos = _random_position("Downtown Core")
+        pos = _random_position("Financial / St. Lawrence")
         # round(x, 6) should not change the value
         assert pos[0] == round(pos[0], 6)
         assert pos[1] == round(pos[1], 6)

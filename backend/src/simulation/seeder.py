@@ -17,10 +17,9 @@ from __future__ import annotations
 
 import logging
 import random
-import math
 from typing import Any
 
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.avatar.generator import generate_avatar_from_seed
@@ -42,11 +41,9 @@ from src.data.toronto_zones import (
     _FALLBACK_POSITION,
 )
 from src.data.industry_mapping import (
-    INDUSTRY_REGIONS,
-    INDUSTRY_WORK_DISTRICTS,
+    EMPLOYERS,
     INDUSTRY_HOME_WEIGHTS,
     INDUSTRIES,
-    INDUSTRY_DISTRIBUTION,
 )
 from src.data.demographics import (
     SOCIAL_CLASSES,
@@ -112,28 +109,6 @@ def _pick_home_neighborhood(industry: str) -> str:
     return random.choices(neighborhoods, weights=weights, k=1)[0]
 
 
-def _pick_work_district(industry: str) -> str:
-    """Pick a work district for *industry*.
-
-    Uses new INDUSTRY_WORK_DISTRICTS first, falls back to INDUSTRY_REGIONS.
-    """
-    districts = INDUSTRY_WORK_DISTRICTS.get(industry)
-    if districts:
-        return random.choice(districts)
-
-    # Fallback to legacy mapping
-    regions = INDUSTRY_REGIONS.get(industry)
-    if regions:
-        logger.warning(
-            "Industry %r not in INDUSTRY_WORK_DISTRICTS; using legacy INDUSTRY_REGIONS",
-            industry,
-        )
-        return random.choice(regions)
-
-    logger.warning("Industry %r has no work district mapping; defaulting", industry)
-    return "Financial District"
-
-
 def _random_age() -> int:
     """Return a random age drawn from AGE_DISTRIBUTION."""
     buckets = [(lo, hi) for lo, hi, _ in AGE_DISTRIBUTION]
@@ -170,50 +145,6 @@ def _random_social_class(neighborhood: str) -> str:
 
 def _random_name() -> str:
     return f"{random.choice(FIRST_NAMES)} {random.choice(LAST_NAMES)}"
-
-
-def _proportional_distribution(total: int, weights: dict[str, float]) -> dict[str, int]:
-    """
-    Distribute *total* items across keys using *weights* (need not sum to 1).
-    Guarantees the returned counts sum to exactly *total* by giving remainders
-    to the highest-fractional-part buckets.
-    """
-    total_weight = sum(weights.values())
-    raw = {k: total * v / total_weight for k, v in weights.items()}
-    floored = {k: int(v) for k, v in raw.items()}
-    remainder = total - sum(floored.values())
-    # Sort by descending fractional part to distribute leftovers fairly
-    fractions = sorted(raw.keys(), key=lambda k: -(raw[k] - floored[k]))
-    for i in range(remainder):
-        floored[fractions[i]] += 1
-    return floored
-
-
-def _company_name(industry: str, index: int) -> str:
-    """Generate a plausible company name for a given industry and index."""
-    prefixes: dict[str, list[str]] = {
-        "Finance": ["Capital", "Pinnacle", "Sterling", "Meridian", "Harbour"],
-        "Tech": ["Nexus", "Pixel", "Orbit", "Apex", "Byte", "Synapse"],
-        "Healthcare": ["CarePoint", "Vitality", "MedCore", "LifeWell", "PrimeCare"],
-        "Retail": ["Metro", "Urban", "Maple", "Lakeview", "Crestview"],
-        "Manufacturing": ["CanTech", "PrimeFab", "Ironside", "Precision", "Forge"],
-        "Government": ["Public", "Civic", "Municipal", "Regional", "Crown"],
-        "Education": ["Academy", "Scholars", "Meridian", "Horizon", "Collegiate"],
-    }
-    suffixes: dict[str, list[str]] = {
-        "Finance": ["Group", "Partners", "Advisors", "Capital", "Wealth"],
-        "Tech": ["Labs", "Systems", "Solutions", "Digital", "Works", "IO"],
-        "Healthcare": ["Health", "Medical", "Clinic", "Wellness", "Sciences"],
-        "Retail": ["Market", "Store", "Goods", "Retail", "Shop"],
-        "Manufacturing": ["Industries", "Manufacturing", "Fabrication", "Works", "Corp"],
-        "Government": ["Services", "Agency", "Department", "Office", "Bureau"],
-        "Education": ["Institute", "College", "Academy", "School", "Centre"],
-    }
-    prefix_list = prefixes.get(industry, ["General"])
-    suffix_list = suffixes.get(industry, ["Corp"])
-    prefix = prefix_list[index % len(prefix_list)]
-    suffix = suffix_list[(index // len(prefix_list)) % len(suffix_list)]
-    return f"{prefix} {suffix}"
 
 
 # ---------------------------------------------------------------------------
@@ -275,8 +206,7 @@ async def seed_session(
     config:
         Seeding parameters:
             total_population  (int, default 100)  — total follower count
-            archetype_count   (int, default 10)   — number of archetypes
-            company_count     (int, default 20)   — number of companies
+            archetype_count   (int, default 20)   — number of archetypes
 
     Returns
     -------
@@ -286,8 +216,7 @@ async def seed_session(
     session_id = session_obj.session_id
 
     total_population: int = max(1, int(config.get("total_population", 100)))
-    archetype_count: int = max(1, int(config.get("archetype_count", 10)))
-    company_count: int = max(1, int(config.get("company_count", 20)))
+    archetype_count: int = max(1, int(config.get("archetype_count", 20)))
 
     # Clamp archetype_count so we don't exceed population
     archetype_count = min(archetype_count, total_population)
@@ -298,47 +227,40 @@ async def seed_session(
     locations_seeded = await _seed_locations(db)
 
     # ------------------------------------------------------------------
-    # Step 2: Generate archetypes
+    # Step 2: Generate archetypes (round-robin through EMPLOYERS)
     # ------------------------------------------------------------------
-    industry_archetype_counts = _proportional_distribution(
-        archetype_count, INDUSTRY_DISTRIBUTION
-    )
-
     archetypes_data: list[dict] = []
-    archetype_id = 1
-
-    # Track archetype metadata for downstream use
     archetype_meta: list[dict] = []
 
-    for industry, count in industry_archetype_counts.items():
-        for _ in range(count):
-            work_district = _pick_work_district(industry)
-            home_neighborhood = _pick_home_neighborhood(industry)
-            social_class = _random_social_class(home_neighborhood)
+    for i in range(archetype_count):
+        employer = EMPLOYERS[i % len(EMPLOYERS)]
+        industry = employer["industry"]
+        work_district = employer["work_district"]
+        home_neighborhood = _pick_home_neighborhood(industry)
+        social_class = _random_social_class(home_neighborhood)
 
-            # `region` is set to home_neighborhood for backward compat
-            archetypes_data.append(
-                {
-                    "session_id": session_id,
-                    "archetype_id": archetype_id,
-                    "industry": industry,
-                    "region": home_neighborhood,
-                    "social_class": social_class,
-                    "home_neighborhood": home_neighborhood,
-                    "work_district": work_district,
-                }
-            )
-            archetype_meta.append(
-                {
-                    "archetype_id": archetype_id,
-                    "industry": industry,
-                    "region": home_neighborhood,
-                    "social_class": social_class,
-                    "home_neighborhood": home_neighborhood,
-                    "work_district": work_district,
-                }
-            )
-            archetype_id += 1
+        archetype_id = i + 1
+        archetypes_data.append(
+            {
+                "session_id": session_id,
+                "archetype_id": archetype_id,
+                "industry": industry,
+                "region": home_neighborhood,
+                "social_class": social_class,
+                "home_neighborhood": home_neighborhood,
+                "work_district": work_district,
+            }
+        )
+        archetype_meta.append(
+            {
+                "archetype_id": archetype_id,
+                "industry": industry,
+                "region": home_neighborhood,
+                "social_class": social_class,
+                "home_neighborhood": home_neighborhood,
+                "work_district": work_district,
+            }
+        )
 
     await batch_insert_archetypes(db, archetypes_data)
 
@@ -396,30 +318,23 @@ async def seed_session(
     all_follower_ids = list(range(1, total_followers + 1))
 
     # ------------------------------------------------------------------
-    # Step 4: Generate companies
+    # Step 4: Generate companies (fixed list of EMPLOYERS)
     # ------------------------------------------------------------------
-    industry_company_counts = _proportional_distribution(
-        company_count, INDUSTRY_DISTRIBUTION
-    )
-
     companies_data: list[dict] = []
-    company_id = 1
 
-    for industry, count in industry_company_counts.items():
-        for idx in range(count):
-            work_district = _pick_work_district(industry)
-            companies_data.append(
-                {
-                    "session_id": session_id,
-                    "company_id": company_id,
-                    "name": _company_name(industry, idx),
-                    "industry": industry,
-                    "region": work_district,  # backward compat
-                    "position": _random_position(work_district),
-                    "work_district": work_district,
-                }
-            )
-            company_id += 1
+    for i, employer in enumerate(EMPLOYERS):
+        work_district = employer["work_district"]
+        companies_data.append(
+            {
+                "session_id": session_id,
+                "company_id": i + 1,
+                "name": employer["name"],
+                "industry": employer["industry"],
+                "region": work_district,  # backward compat
+                "position": _random_position(work_district),
+                "work_district": work_district,
+            }
+        )
 
     await batch_insert_companies(db, companies_data)
 
