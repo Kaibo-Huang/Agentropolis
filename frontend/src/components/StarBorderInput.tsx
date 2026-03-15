@@ -3,8 +3,7 @@
 import { type InputHTMLAttributes } from "react";
 
 /**
- * Text input with an animated star-border (rotating conic gradient).
- * Inspired by https://reactbits.dev/animations/star-border
+ * Text input with star-border and arrow submit button.
  */
 export default function StarBorderInput({
   className = "",
@@ -25,6 +24,15 @@ export default function StarBorderInput({
         }}
         {...props}
       />
+      <button
+        type="button"
+        className="star-border-submit"
+        onClick={onSubmit}
+        aria-label="Send"
+        title="Send"
+      >
+        <span aria-hidden>→</span>
+      </button>
     </span>
   );
 }
