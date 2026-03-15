@@ -28,6 +28,9 @@ function toMapFollower(f: FollowerResponse): MapFollower {
     name: f.name,
     position: toMapbox(f.position),
     happiness: f.happiness,
+    age: f.age,
+    gender: f.gender,
+    race: f.race,
     avatar: avatar ?? undefined,
   };
 }
@@ -50,6 +53,13 @@ interface PrefetchedTick {
   session: SessionResponse;
   prefetchedAt: number;
 }
+export type ToolkitTab =
+  | "latest_posts"
+  | "demographics"
+  | "archetypes"
+  | "event_log"
+  | "inject_event"
+  | "create_avatar";
 
 const MAX_LOG_ENTRIES = 50;
 const MAX_CONSECUTIVE_FAILURES = 3;
@@ -66,8 +76,8 @@ export interface SimulationState {
 
   // UI state
   showWelcome: boolean;
-  showEventsSheet: boolean;
-  showAvatarSheet: boolean;
+  activeToolkitTab: ToolkitTab;
+  isToolkitOpenMobile: boolean;
 
   // Actions
   createAndConnect: () => Promise<void>;
@@ -89,8 +99,9 @@ export interface SimulationState {
     },
   ) => Promise<void>;
   disconnect: () => Promise<void>;
-  toggleEventsSheet: () => void;
-  toggleAvatarSheet: () => void;
+  setToolkitTab: (tab: ToolkitTab) => void;
+  toggleToolkitMobile: () => void;
+  openToolkitTab: (tab: ToolkitTab) => void;
   dismissWelcome: () => void;
   log: (msg: string) => void;
 }
@@ -220,8 +231,8 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
     logEntries: [],
     hourOfDay: 8,
     showWelcome: true,
-    showEventsSheet: false,
-    showAvatarSheet: false,
+    activeToolkitTab: "latest_posts",
+    isToolkitOpenMobile: false,
 
     // Actions
     log,
@@ -493,12 +504,19 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
       });
     },
 
-    toggleEventsSheet() {
-      set((s) => ({ showEventsSheet: !s.showEventsSheet }));
+    setToolkitTab(tab) {
+      set({ activeToolkitTab: tab });
     },
 
-    toggleAvatarSheet() {
-      set((s) => ({ showAvatarSheet: !s.showAvatarSheet }));
+    toggleToolkitMobile() {
+      set((s) => ({ isToolkitOpenMobile: !s.isToolkitOpenMobile }));
+    },
+
+    openToolkitTab(tab) {
+      set({
+        activeToolkitTab: tab,
+        isToolkitOpenMobile: true,
+      });
     },
 
     dismissWelcome() {
