@@ -56,12 +56,15 @@ export default function HUD() {
       </div>
       <div className="hud-center">
         <div className="time-day">{dayDisplay}</div>
-        <div className="time-pop">{popDisplay}</div>
       </div>
       <div className="hud-right">
         <span className="stat-pill">
           <span className="label">Status</span>
-          <span className="value">{phase === "idle" ? "Init" : phase}</span>
+          <span className="value">
+            {phase === "idle" ? "Init" : phase}
+            <span className="stat-pill-sep"> · </span>
+            <span className="stat-pill-pop">{popDisplay}</span>
+          </span>
         </span>
       </div>
     </header>
