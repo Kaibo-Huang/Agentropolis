@@ -31,7 +31,8 @@ export interface MapFollower {
 /** Hex colors for building height gradient (low → high). Default: warm to cool. */
 export type BuildingColorPalette = readonly [string, string, ...string[]];
 
-const MAPBOX_STYLE = "mapbox://styles/danielp1231231/cmmr3ha5d003q01s4gvpsagc0";
+const MAPBOX_STYLE_LANDING = "mapbox://styles/danielp1231231/cmmr4yn9s007f01qs9f9h0wjq";
+const MAPBOX_STYLE_SIMULATION = "mapbox://styles/mapbox/standard";
 
 export interface TorontoMapboxOptions {
   container: HTMLElement;
@@ -531,6 +532,8 @@ export class TorontoMapboxScene {
   private styleLoaded: boolean = false;
   /** True after the first Earth→Toronto zoom-in has run (only on first launch). */
   private initialZoomDone: boolean = false;
+  /** True when switching from landing style to simulation style (setStyle in progress). */
+  private switchingToSimulationStyle: boolean = false;
 
   constructor(options: TorontoMapboxOptions) {
     const { container, buildingColors, landingFirstView } = options;
@@ -556,7 +559,7 @@ export class TorontoMapboxScene {
     this.map = new mapboxgl.Map({
       container,
       accessToken: token,
-      style: MAPBOX_STYLE,
+      style: startAtEarth ? MAPBOX_STYLE_LANDING : MAPBOX_STYLE_SIMULATION,
       center: TORONTO_CENTER,
       zoom: startAtEarth ? 2 : 15.2,
       minZoom: 2,
@@ -760,6 +763,20 @@ export class TorontoMapboxScene {
         this.pendingFollowers = null;
         this.setFollowers(pending);
       }
+      if (this.switchingToSimulationStyle) {
+        this.switchingToSimulationStyle = false;
+        this.map.setMaxBounds([
+          [-79.42, 43.62],
+          [-79.34, 43.69],
+        ]);
+        this.map.easeTo({
+          center: TORONTO_CENTER,
+          zoom: 15.2,
+          pitch: 40,
+          bearing: -20,
+          duration: 1600,
+        });
+      }
     });
 
     // Fetch unified zone GeoJSON from backend (single source of truth).
@@ -910,22 +927,13 @@ export class TorontoMapboxScene {
     this.map.jumpTo(dest);
   }
 
-  /** Stop landing route and ease to default simulation view with 3D buildings. */
+  /** Stop landing route: switch to simulation style, then ease to default view. */
   stopLandingRoute(): void {
     this.isLandingRoute = false;
     this.landingStartTime = -1;
     if (this.map) {
-      this.map.setMaxBounds([
-        [-79.42, 43.62],
-        [-79.34, 43.69],
-      ]);
-      this.map.easeTo({
-        center: TORONTO_CENTER,
-        zoom: 15.2,
-        pitch: 40,
-        bearing: -20,
-        duration: 1600,
-      });
+      this.switchingToSimulationStyle = true;
+      this.map.setStyle(MAPBOX_STYLE_SIMULATION);
     }
   }
 
