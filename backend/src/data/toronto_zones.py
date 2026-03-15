@@ -28,23 +28,34 @@ logger = logging.getLogger(__name__)
 # Southern edge follows the approximate Lake Ontario / Toronto Harbour shoreline.
 
 LAND_POLYGON = Polygon([
-    # Top edge (west to east)
-    (-79.46, 43.71), (-79.30, 43.71),
+    # Top edge (west to east) — extended to cover full viewport at zoom 13
+    (-79.55, 43.75), (-79.24, 43.75),
     # East edge down to shoreline
-    (-79.30, 43.648),
-    # Shoreline waypoints (east to west)
+    (-79.24, 43.648),
+    # Shoreline waypoints (east to west) — refined to track actual waterfront
+    (-79.30, 43.648),    # East Bayfront / Port Lands
     (-79.330, 43.646),   # Cherry Beach approach
     (-79.340, 43.644),   # Keating Channel / Villiers Island
     (-79.350, 43.641),   # Sugar Beach / Sherbourne Common
+    (-79.358, 43.640),   # Parliament slip
     (-79.363, 43.639),   # Jarvis slip
+    (-79.368, 43.638),   # Jarvis / Queens Quay
     (-79.373, 43.638),   # Yonge Quay / Jack Layton Ferry Terminal
+    (-79.378, 43.637),   # York / Simcoe slip
     (-79.383, 43.637),   # York Quay / Harbourfront Centre
-    (-79.395, 43.636),   # Spadina Quay / HTO Park
-    (-79.405, 43.634),   # Bathurst Quay
-    (-79.420, 43.635),   # CNE shoreline
-    (-79.46, 43.633),    # Exhibition / Ontario Place waterfront
+    (-79.389, 43.636),   # Rees St slip
+    (-79.395, 43.635),   # Spadina Quay / HTO Park
+    (-79.398, 43.634),   # Music Garden
+    (-79.402, 43.633),   # Bathurst Quay / Portland slip
+    (-79.407, 43.632),   # Stadium Rd / Fort York approach
+    (-79.412, 43.631),   # Ontario Place / Budweiser Stage
+    (-79.418, 43.630),   # BMO Field / Exhibition Place south edge
+    (-79.425, 43.631),   # Exhibition Place west / Marilyn Bell Park
+    (-79.435, 43.631),   # Sunnyside area
+    (-79.45, 43.630),    # Humber Bay east
+    (-79.55, 43.628),    # far west (Humber Bay / Mimico)
     # Close
-    (-79.46, 43.71),
+    (-79.55, 43.75),
 ])
 
 # ---------------------------------------------------------------------------
