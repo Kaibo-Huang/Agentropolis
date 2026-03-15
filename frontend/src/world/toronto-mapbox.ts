@@ -44,6 +44,7 @@ export type BuildingColorPalette = readonly [string, string, ...string[]];
 
 const MAPBOX_STYLE_LANDING = "mapbox://styles/danielp1231231/cmmr4yn9s007f01qs9f9h0wjq";
 const MAPBOX_STYLE_SIMULATION = "mapbox://styles/mapbox/standard";
+type Bounds = [[number, number], [number, number]];
 
 export interface TorontoMapboxOptions {
   container: HTMLElement;
@@ -56,6 +57,25 @@ export interface TorontoMapboxOptions {
 
 // Toronto downtown
 const TORONTO_CENTER: [number, number] = [-79.38175019453755, 43.64369424043282];
+const VIEWPORT_BOUNDS_EXPANSION = 1.2; // +20%
+const BASE_TORONTO_BOUNDS: Bounds = [
+  [-79.45, 43.62], // SW: expanded west to cover Exhibition/Parkdale
+  [-79.34, 43.69], // NE: just east of DVP & Bloor
+];
+
+function expandBounds(bounds: Bounds, factor: number): Bounds {
+  const [[minLng, minLat], [maxLng, maxLat]] = bounds;
+  const centerLng = (minLng + maxLng) / 2;
+  const centerLat = (minLat + maxLat) / 2;
+  const halfLng = ((maxLng - minLng) / 2) * factor;
+  const halfLat = ((maxLat - minLat) / 2) * factor;
+  return [
+    [centerLng - halfLng, centerLat - halfLat],
+    [centerLng + halfLng, centerLat + halfLat],
+  ];
+}
+
+const TORONTO_MAX_BOUNDS = expandBounds(BASE_TORONTO_BOUNDS, VIEWPORT_BOUNDS_EXPANSION);
 
 // Landing route: 88 Queens Quay West → CN Tower → return loop (different path)
 // Coordinates: 88 Queens Quay W ≈ [-79.3787, 43.64085], CN Tower ≈ [-79.38705, 43.64257]
@@ -628,10 +648,6 @@ export class TorontoMapboxScene {
     }
 
     const startAtEarth = landingFirstView === true;
-    const torontoBounds: [[number, number], [number, number]] = [
-      [-79.45, 43.62], // SW: expanded west to cover Exhibition/Parkdale
-      [-79.34, 43.69], // NE: just east of DVP & Bloor
-    ];
     this.map = new mapboxgl.Map({
       container,
       accessToken: token,
@@ -645,7 +661,7 @@ export class TorontoMapboxScene {
       bearing: startAtEarth ? 0 : -20,
       antialias: true,
       // Only restrict to downtown when not in landing (Earth view needs no bounds)
-      ...(startAtEarth ? {} : { maxBounds: torontoBounds }),
+      ...(startAtEarth ? {} : { maxBounds: TORONTO_MAX_BOUNDS }),
     });
 
     this.map.addControl(new GentleZoomControl(), "bottom-right");
@@ -728,12 +744,13 @@ export class TorontoMapboxScene {
     };
     container.addEventListener("mousedown", this.onContainerMouseDown);
 
-    const BOUNDS_W = -79.38, BOUNDS_E = -79.37, BOUNDS_S = 43.63, BOUNDS_N = 43.66;
     const clampCenter = () => {
       if (!this.map) return;
+      const bounds = this.map.getMaxBounds();
+      if (!bounds) return;
       const c = this.map.getCenter();
-      const lng = Math.max(BOUNDS_W, Math.min(BOUNDS_E, c.lng));
-      const lat = Math.max(BOUNDS_S, Math.min(BOUNDS_N, c.lat));
+      const lng = Math.max(bounds.getWest(), Math.min(bounds.getEast(), c.lng));
+      const lat = Math.max(bounds.getSouth(), Math.min(bounds.getNorth(), c.lat));
       if (lng !== c.lng || lat !== c.lat) {
         this.map.setCenter([lng, lat]);
       }
@@ -855,10 +872,7 @@ export class TorontoMapboxScene {
       }
       if (this.switchingToSimulationStyle) {
         this.switchingToSimulationStyle = false;
-        this.map.setMaxBounds([
-          [-79.45, 43.62],
-          [-79.34, 43.69],
-        ]);
+        this.map.setMaxBounds(TORONTO_MAX_BOUNDS);
         this.map.easeTo({
           center: TORONTO_CENTER,
           zoom: 15.2,
