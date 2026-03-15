@@ -30,7 +30,7 @@ export default function HUD() {
   return (
     <header id="hud">
       <div className="hud-left">
-        <h1 className="hud-title">Toronto</h1>
+        <h1 className="hud-title">Toronto, Ontario, Canada</h1>
         <div className="hud-controls">
           <button type="button" className="btn btn-toolkit-mobile" onClick={toggleToolkitMobile}>
             Toolkit
