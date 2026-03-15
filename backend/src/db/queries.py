@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import delete, func, insert, select, update
+from sqlalchemy import delete, func, insert, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models import (
@@ -348,11 +348,28 @@ async def get_events_for_session(
     return list(result.scalars().all())
 
 
+async def get_active_events_for_session(
+    db: AsyncSession, session_id: uuid.UUID, current_time: datetime
+) -> list[Event]:
+    """Return events whose effects are still active (end_time not yet passed)."""
+    result = await db.execute(
+        select(Event)
+        .where(
+            Event.session_id == session_id,
+            or_(Event.end_time > current_time, Event.end_time.is_(None)),
+        )
+        .order_by(Event.virtual_time)
+    )
+    return list(result.scalars().all())
+
+
 async def create_event(
     db: AsyncSession,
     session_id: uuid.UUID,
     event_prompt: str,
     virtual_time: datetime,
+    effects: dict | None = None,
+    end_time: datetime | None = None,
 ) -> Event:
     # Determine next event_id for this session
     next_id = await get_max_id(db, Event, session_id, "event_id")
@@ -361,6 +378,8 @@ async def create_event(
         event_id=next_id,
         event_prompt=event_prompt,
         virtual_time=virtual_time,
+        effects=effects,
+        end_time=end_time,
     )
     db.add(event)
     await db.flush()

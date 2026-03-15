@@ -19,13 +19,19 @@ from src.db.engine import AsyncSessionLocal
 logger = logging.getLogger(__name__)
 
 
-async def run_health_tick(session_id: uuid.UUID) -> dict:
+async def run_health_tick(
+    session_id: uuid.UUID,
+    disease_multiplier: float = 1.0,
+) -> dict:
     """Run daily health tick: disease transmission and seeding.
 
     Parameters
     ----------
     session_id : uuid.UUID
         The simulation session to process health updates for.
+    disease_multiplier : float
+        Multiplier on contagious disease transmission rates (from active events).
+        1.0 = normal, 3.0 = triple spread, 0.5 = halved.
 
     Returns
     -------
@@ -53,7 +59,7 @@ async def run_health_tick(session_id: uuid.UUID) -> dict:
             if not disease.get("is_contagious", False):
                 continue
 
-            rate = disease["transmission_rate_per_day"]
+            rate = disease["transmission_rate_per_day"] * disease_multiplier
             disease_name = disease["name"]
 
             for _arch_id, followers in by_archetype.items():

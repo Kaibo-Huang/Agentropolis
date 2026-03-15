@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
 import time
 import uuid
 from datetime import datetime, timedelta
@@ -30,6 +31,7 @@ from src.agents.schemas import ArchetypeResponse
 from src.db import queries
 from src.db.engine import AsyncSessionLocal
 from src.db.models import Archetype
+from src.simulation.event_effects import ActiveEffects, aggregate_active_effects
 from src.ws.manager import manager
 
 logger = logging.getLogger(__name__)
@@ -126,12 +128,16 @@ async def run_hourly_tick(
             queries.get_max_id(db, queries.Post, session_id, "post_id"),
             queries.get_events_for_session(db, session_id),
         )
+    # Aggregate structured effects from all active events (once per tick)
+    active_effects = aggregate_active_effects(tick_events, current_time)
+
     logger.info(
-        "TICK #%d | setup %.2fs | %d archetypes, %d events",
+        "TICK #%d | setup %.2fs | %d archetypes, %d events (%d with effects)",
         tick_number,
         time.perf_counter() - t0,
         len(archetypes),
         len(tick_events),
+        sum(1 for e in tick_events if e.effects),
     )
 
     id_alloc = _IdAllocator(next_memory_id, next_post_id)
@@ -146,6 +152,7 @@ async def run_hourly_tick(
                 tick_number=tick_number,
                 id_alloc=id_alloc,
                 tick_events=tick_events,
+                active_effects=active_effects,
             )
 
     await manager.broadcast(session_id, {
@@ -201,6 +208,7 @@ async def run_hourly_tick(
         "virtual_time": target_time.isoformat(),
         "archetypes_processed": successes,
         "archetypes_failed": failures,
+        "disease_transmission_multiplier": active_effects.disease_transmission_multiplier if active_effects else 1.0,
     }
 
 
@@ -210,6 +218,7 @@ async def _prefetch_archetype_context(
     current_time: datetime,
     target_time: datetime,
     tick_events: list,
+    active_effects: ActiveEffects | None = None,
 ) -> tuple[dict, list]:
     """Fetch context + followers for one archetype, all queries truly in parallel.
 
@@ -241,11 +250,26 @@ async def _prefetch_archetype_context(
         _get_locations_cached(home, None),
     )
 
+    # Build effects summary for LLM awareness
+    effects_summary = {}
+    if active_effects:
+        if active_effects.tweet_sentiment:
+            effects_summary["city_mood"] = active_effects.tweet_sentiment
+        if active_effects.gathering_zones:
+            effects_summary["gathering_zones"] = [
+                g["zone_name"] for g in active_effects.gathering_zones
+            ]
+        if active_effects.stay_home_rate is not None:
+            effects_summary["stay_home_rate"] = active_effects.stay_home_rate
+        if active_effects.happiness_delta != 0.0:
+            effects_summary["happiness_shift"] = active_effects.happiness_delta
+
     return {
         "current_time": current_time.isoformat(),
         "actions_finish_at": current_time.isoformat(),
         "next_tick_time": next_tick_time.isoformat(),
-        "events": [e.event_prompt for e in tick_events],
+        "events": active_effects.event_prompts if active_effects else [e.event_prompt for e in tick_events],
+        "event_effects_summary": effects_summary,
         "recent_memories": [
             {"action": m.action_type, "duration": m.duration, "thinking": m.thinking}
             for m in memories
@@ -271,6 +295,7 @@ async def _process_single_archetype(
     tick_number: int,
     id_alloc: _IdAllocator,
     tick_events: list,
+    active_effects: ActiveEffects | None = None,
 ) -> dict:
     """Process a single archetype: LLM decision + follower variations + persist.
 
@@ -289,7 +314,7 @@ async def _process_single_archetype(
     t = time.perf_counter()
     try:
         prefetched_context, followers = await _prefetch_archetype_context(
-            session_id, archetype, current_time, target_time, tick_events
+            session_id, archetype, current_time, target_time, tick_events, active_effects
         )
         read_elapsed = time.perf_counter() - t
         logger.debug(
@@ -308,7 +333,8 @@ async def _process_single_archetype(
             "recent_memories": [],
             "follower_stats": {},
             "relationships": {},
-            "events": [e.event_prompt for e in tick_events],
+            "events": active_effects.event_prompts if active_effects else [e.event_prompt for e in tick_events],
+            "event_effects_summary": {},
             "home_locations": [],
             "work_locations": [],
         }
@@ -355,6 +381,7 @@ async def _process_single_archetype(
             followers=followers,
             target_time=target_time,
             id_alloc=id_alloc,
+            active_effects=active_effects,
         )
     llm2_elapsed = time.perf_counter() - t
 
@@ -489,6 +516,7 @@ async def _generate_follower_variations(
     followers: list,
     target_time: datetime,
     id_alloc: _IdAllocator,
+    active_effects: ActiveEffects | None = None,
 ) -> tuple[list[dict], list[dict]]:
     """Compute follower updates with rules; call LLM only for tweet text."""
 
@@ -497,19 +525,51 @@ async def _generate_follower_variations(
     updates = []
     for follower in followers:
         delta = compute_happiness_delta(archetype_response.actions, follower.volatility)
-        new_happiness = max(0.0, min(1.0, follower.happiness + delta))
+
+        # Event happiness uses a TARGET-PULL model instead of flat deltas.
+        # This creates a realistic distribution: pandemic → median ~13%,
+        # championship → median ~88%, with per-follower variance from volatility.
+        if active_effects and (active_effects.happiness_delta != 0.0
+                or active_effects.happiness_per_industry):
+            event_shift = active_effects.happiness_delta
+            industry = getattr(archetype, "industry", None)
+            if industry and industry in active_effects.happiness_per_industry:
+                event_shift += active_effects.happiness_per_industry[industry]
+
+            # Map event_shift to a target happiness (±0.15 → target ~13%/88%)
+            target = max(0.05, min(0.95, 0.5 + event_shift * 2.5))
+            # Pull toward target, scaled by volatility for per-follower variance
+            vol_scale = 0.5 + 0.5 * follower.volatility
+            pull = (target - follower.happiness) * 0.15 * vol_scale
+            delta += pull + random.gauss(0, 0.02)
+        else:
+            # No event: gentle mean reversion toward 0.5
+            delta += (0.5 - follower.happiness) * 0.03
+
+        # Clamp after all modifiers
+        delta = max(-0.3, min(0.3, delta))
+        new_happiness = max(0.05, min(0.95, follower.happiness + delta))
         update: dict = {
             "session_id": session_id,
             "follower_id": follower.follower_id,
             "happiness": new_happiness,
         }
-        pos = compute_position(archetype_response.actions, follower, hour=toronto_hour)
+        pos = compute_position(
+            archetype_response.actions,
+            follower,
+            hour=toronto_hour,
+            active_effects=active_effects,
+            industry=getattr(archetype, "industry", None),
+        )
         if pos:
             update["position"] = pos
         updates.append(update)
 
-    # ── LLM tweet generation for ~10% of followers ──
-    tweeters = select_tweeters(followers)
+    # ── LLM tweet generation — rate modified by events ──
+    effective_tweet_rate = 0.10
+    if active_effects:
+        effective_tweet_rate *= active_effects.tweet_rate_multiplier
+    tweeters = select_tweeters(followers, rate=effective_tweet_rate)
     raw_posts: list[dict] = []
 
     if tweeters:
@@ -519,7 +579,13 @@ async def _generate_follower_variations(
                 timeout=15.0,
                 save_state=False,
             ):
-                prompt = build_tweet_prompt(archetype, archetype_response, tweeters)
+                tweet_sentiment = active_effects.tweet_sentiment if active_effects else None
+                event_prompts = active_effects.event_prompts if active_effects else None
+                prompt = build_tweet_prompt(
+                    archetype, archetype_response, tweeters,
+                    tweet_sentiment=tweet_sentiment,
+                    event_prompts=event_prompts if event_prompts else None,
+                )
                 result = await rt.call(tweet_agent, prompt)
                 batch = result.structured
 

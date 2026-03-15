@@ -388,6 +388,13 @@ function HorizontalBarChart({
 }
 
 function LatestPostsTab({ posts }: { posts: PostResponse[] }) {
+  const followers = useSimulationStore((state) => state.followers);
+  const nameMap = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const f of followers) m.set(f.follower_id, f.name);
+    return m;
+  }, [followers]);
+
   return (
     <section className="toolkit-card">
       <h3>Latest Posts</h3>
@@ -395,7 +402,7 @@ function LatestPostsTab({ posts }: { posts: PostResponse[] }) {
         {posts.slice(0, 20).map((post) => (
           <article key={post.post_id} className="toolkit-post">
             <span className="toolkit-post-author">
-              Follower #{post.follower_id}
+              {nameMap.get(post.follower_id) ?? `Follower #${post.follower_id}`}
             </span>
             <span className="toolkit-post-text">{post.text}</span>
             <span className="toolkit-post-time">

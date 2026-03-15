@@ -280,6 +280,8 @@ class Event(Base):
     event_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     event_prompt: Mapped[str] = mapped_column(Text, nullable=False)
     virtual_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    effects: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    end_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     session: Mapped["Session"] = relationship(back_populates="events", lazy="noload")
 
