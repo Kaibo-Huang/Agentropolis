@@ -275,7 +275,7 @@ h1, h2, h3, h4, h5, h6 {
 .hud-center {
   position: absolute;
   left: 50%;
-  top: 90%;
+  top: 120%;
   transform: translate(-50%, -50%);
   padding: 0.5rem 1.25rem;
   background: rgba(255, 255, 255, 0);
@@ -290,12 +290,21 @@ h1, h2, h3, h4, h5, h6 {
 .hud-time-controls .btn {
   white-space: nowrap;
 }
+.hud-time-buttons {
+  display: flex;
+  gap: 4px;
+}
 .hud-time-buttons .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
   border-radius: 9999px;
   border: 1px solid #f4ebbd;
   background: transparent;
   color: #f4ebbd;
-  padding-inline: 0.55rem;
+  padding: 0;
 }
 .hud-time-buttons .btn-primary {
   border-color: #f4ebbd;
