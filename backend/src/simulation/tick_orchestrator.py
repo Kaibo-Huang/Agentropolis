@@ -419,7 +419,7 @@ async def _process_single_archetype(
     )
 
     return {
-        "archetype_id": archetype.archetype_id,
+        "archetype_id": arch_id,
         "actions": len(archetype_response.actions),
         "followers_updated": len(followers),
     }
