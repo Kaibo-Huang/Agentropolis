@@ -369,37 +369,45 @@ function setupFollowerLayer(
   map: mapboxgl.Map,
   followers: MapFollower[],
 ): void {
-  if (map.getSource("followers")) return;
-  map.addSource("followers", {
-    type: "geojson",
-    data: buildFollowerGeoJSON(followers),
-  });
-  map.addLayer({
-    id: "followers-layer",
-    type: "circle",
-    source: "followers",
-    minzoom: 12,
-    paint: {
-      "circle-radius": [
-        "interpolate",
-        ["linear"],
-        ["zoom"],
-        12, 2,
-        15, 5,
-        18, 8,
-      ],
-      "circle-color": ["get", "color"],
-      "circle-stroke-width": 1.5,
-      "circle-stroke-color": "rgba(255,255,255,0.9)",
-      "circle-opacity": [
-        "interpolate",
-        ["linear"],
-        ["get", "happiness"],
-        0, 0.4,
-        1, 1,
-      ],
-    },
-  });
+  const data = buildFollowerGeoJSON(followers);
+  const source = map.getSource("followers");
+  if (!source) {
+    map.addSource("followers", {
+      type: "geojson",
+      data,
+    });
+  } else if ("setData" in source) {
+    (source as mapboxgl.GeoJSONSource).setData(data);
+  }
+
+  if (!map.getLayer("followers-layer")) {
+    map.addLayer({
+      id: "followers-layer",
+      type: "circle",
+      source: "followers",
+      minzoom: 12,
+      paint: {
+        "circle-radius": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          12, 2,
+          15, 5,
+          18, 8,
+        ],
+        "circle-color": ["get", "color"],
+        "circle-stroke-width": 1.5,
+        "circle-stroke-color": "rgba(255,255,255,0.9)",
+        "circle-opacity": [
+          "interpolate",
+          ["linear"],
+          ["get", "happiness"],
+          0, 0.4,
+          1, 1,
+        ],
+      },
+    });
+  }
 }
 
 function setup3D(
@@ -1059,6 +1067,9 @@ export class TorontoMapboxScene {
       return;
     }
 
+    // Ensure source/layer exist even if style.load completed before our first follower sync.
+    setupFollowerLayer(this.map, followers);
+
     // Snapshot current display positions as the animation start
     this.animFromFollowers = this.animToFollowers.length > 0
       ? interpolateFollowers(
@@ -1070,6 +1081,12 @@ export class TorontoMapboxScene {
     this.animToFollowers = followers;
     this.animStartTime = performance.now();
     this.lastFollowers = followers;
+
+    // Apply immediately so dots appear on first load without waiting for a later tick/update.
+    const source = this.map.getSource("followers");
+    if (source && "setData" in source) {
+      (source as mapboxgl.GeoJSONSource).setData(buildFollowerGeoJSON(followers));
+    }
 
     if (!this.thoughtBubbleModeEnabled) return;
 

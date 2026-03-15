@@ -8,7 +8,6 @@ import Sidebar from "./Sidebar";
 import AvatarSheet from "./AvatarSheet";
 import SimulationLoadingScreen from "./SimulationLoadingScreen";
 import SimulationTimestampOverlay from "./SimulationTimestampOverlay";
-import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { useSimulationStore } from "../store/simulationStore";
 
 interface SimulationViewProps {
@@ -18,7 +17,6 @@ interface SimulationViewProps {
 export default function SimulationView({
   sessionId,
 }: SimulationViewProps) {
-  useKeyboardShortcuts();
   const connectToSession = useSimulationStore((s) => s.connectToSession);
   const phase = useSimulationStore((s) => s.phase);
   const connectingSessionId = useSimulationStore(
