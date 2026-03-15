@@ -290,6 +290,18 @@ h1, h2, h3, h4, h5, h6 {
 .hud-time-controls .btn {
   white-space: nowrap;
 }
+.hud-time-buttons .btn {
+  border-radius: 9999px;
+  border: 1px solid #f4ebbd;
+  background: transparent;
+  color: #f4ebbd;
+  padding-inline: 0.55rem;
+}
+.hud-time-buttons .btn-primary {
+  border-color: #f4ebbd;
+  background: transparent;
+  color: #f4ebbd;
+}
 .hud-time-buttons .btn span[aria-hidden] {
   display: inline-block;
   font-size: 0.9rem;
