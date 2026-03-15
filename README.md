@@ -1,4 +1,4 @@
-# Agentropolis — Society Simulation
+# Agentropolis — Simulate Society With Thousands of AI Agents
 
 ![](thumbnail.png)
 
