@@ -1,7 +1,8 @@
 from uuid import UUID
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.avatar.schema import AvatarParams
@@ -12,6 +13,12 @@ router = APIRouter(prefix="/sessions/{session_id}", tags=["followers"])
 
 # Default position (Downtown Toronto) for new custom-avatar followers
 _DEFAULT_POSITION = [43.6510, -79.3832]
+
+
+class FollowerMemoryResponse(BaseModel):
+    virtual_time: datetime
+    action_type: str
+    thinking: str
 
 
 class FollowerResponse(BaseModel):
@@ -31,8 +38,10 @@ class FollowerResponse(BaseModel):
     volatility: float
     avatar_seed: int | None = None
     avatar_params: dict | None = None
+    industry: str | None = None
     home_neighborhood: str | None = None
     work_district: str | None = None
+    recent_memories: list[FollowerMemoryResponse] = Field(default_factory=list)
 
 
 class FollowerListResponse(BaseModel):
@@ -61,6 +70,26 @@ async def list_followers(
         raise HTTPException(status_code=404, detail="Session not found")
 
     followers = await queries.get_followers_for_session(db, session_id, offset, limit)
+    archetype_ids = sorted({f.archetype_id for f in followers})
+    archetypes = await queries.get_archetypes_for_session(db, session_id)
+    industry_by_archetype = {a.archetype_id: a.industry for a in archetypes}
+    recent_memories_by_archetype = await queries.get_recent_memory_summaries_for_archetypes(
+        db,
+        session_id,
+        archetype_ids,
+        limit_per_archetype=3,
+    )
+    for follower in followers:
+        setattr(
+            follower,
+            "recent_memories",
+            recent_memories_by_archetype.get(follower.archetype_id, []),
+        )
+        setattr(
+            follower,
+            "industry",
+            industry_by_archetype.get(follower.archetype_id),
+        )
     total = await queries.get_follower_count(db, session_id)
 
     return FollowerListResponse(

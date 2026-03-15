@@ -18,12 +18,20 @@ export interface MapFollowerAvatar {
   accessories: string[];
 }
 
+export interface MapFollowerMemory {
+  virtual_time: string;
+  action_type: string;
+  thinking: string;
+}
+
 export interface MapFollower {
   follower_id: number;
   archetype_id: number;
   name: string;
+  industry?: string | null;
   position: LngLat | null;
   happiness: number;
+  recent_memories: MapFollowerMemory[];
   age?: number | null;
   gender?: string | null;
   race?: string | null;
@@ -70,6 +78,9 @@ const LANDING_ROUTE: LandingRouteKeyframe[] = [
   { lng: -79.3787, lat: 43.64085, bearing: 285 },   // back to start
 ];
 const LANDING_ROUTE_DURATION_MS = 45000; // full loop
+const LANDING_SEGMENT_DURATION_MS = Math.floor(
+  LANDING_ROUTE_DURATION_MS / (LANDING_ROUTE.length - 1)
+);
 const LANDING_ZOOM = 17.4;
 const LANDING_PITCH = 82;
 
@@ -201,6 +212,21 @@ function getArchetypeColor(archetypeId: number): string {
 }
 
 const TRAVEL_DURATION_MS = 3000;
+const FALLBACK_MEMORY_THOUGHTS = [
+  "Thinking about my dog.",
+  "Wondering what to eat later.",
+  "Remembering to text a friend back.",
+  "Noticing the weather and dressing for it.",
+  "Debating coffee versus tea.",
+  "Trying not to forget my keys.",
+  "Planning a quick grocery run.",
+  "Checking if I replied to everyone.",
+  "Thinking about a weekend walk.",
+  "Wondering if I should call my family.",
+  "Mentally organizing tomorrow's to-do list.",
+  "Looking forward to a quiet evening.",
+  "Trying to remember where I parked.",
+] as const;
 
 function easeInOut(t: number): number {
   return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
@@ -246,6 +272,11 @@ function skinToneToHex(t: number): string {
 function buildFollowerPopupHTML(f: MapFollower): string {
   const happinessPct = Math.round(f.happiness * 100);
   const color = f.avatar?.outfitColor ?? getArchetypeColor(f.archetype_id);
+  const recentMemories =
+    f.recent_memories.length > 0
+      ? f.recent_memories.slice(0, 3)
+      : pickRandomFallbackMemories(3);
+  const subtitle = (f.industry ?? "").trim() || "Industry Unknown";
   const appearance =
     f.avatar
       ? [
@@ -266,7 +297,7 @@ function buildFollowerPopupHTML(f: MapFollower): string {
         <div class="profile-card-avatar" style="background-color:${escapeHtml(color)}"></div>
         <div class="profile-card-title">
           <span class="profile-card-name">${escapeHtml(f.name)}</span>
-          <span class="profile-card-meta">Archetype ${f.archetype_id}</span>
+          <span class="profile-card-meta">${escapeHtml(subtitle)}</span>
         </div>
       </header>
       <div class="profile-card-body">
@@ -277,9 +308,51 @@ function buildFollowerPopupHTML(f: MapFollower): string {
             <span class="profile-card-happiness-text">${happinessPct}%</span>
           </div>
         </div>
+        <div class="profile-card-row">
+          <span class="profile-card-label">Past 3 Memories</span>
+          <ul class="profile-card-memories">${recentMemories
+            .map(
+              (memory) =>
+                `<li class="profile-card-memory">
+                  <span class="profile-card-memory-meta">${escapeHtml(memory.action_type)}${formatMemoryTime(memory.virtual_time)}:</span>
+                  <span class="profile-card-memory-text">${escapeHtml(truncateText(memory.thinking, 90))}</span>
+                </li>`
+            )
+            .join("")}</ul>
+        </div>
         ${appearance ? `<div class="profile-card-row profile-card-appearance"><span class="profile-card-label">Look</span><span>${appearance}</span></div>` : ""}
       </div>
     </div>`;
+}
+
+function formatMemoryTime(virtualTimeIso: string): string {
+  const dt = new Date(virtualTimeIso);
+  if (Number.isNaN(dt.getTime())) return "";
+  const hhmm = dt.toLocaleTimeString("en-CA", {
+    timeZone: "America/Toronto",
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  return ` - ${hhmm}`;
+}
+
+function truncateText(s: string, maxLen: number): string {
+  if (s.length <= maxLen) return s;
+  return `${s.slice(0, maxLen - 3).trimEnd()}...`;
+}
+
+function pickRandomFallbackMemories(count: number): MapFollowerMemory[] {
+  const thoughts = [...FALLBACK_MEMORY_THOUGHTS];
+  for (let i = thoughts.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [thoughts[i], thoughts[j]] = [thoughts[j], thoughts[i]];
+  }
+  return thoughts.slice(0, count).map((thinking) => ({
+    action_type: "thought",
+    virtual_time: "",
+    thinking,
+  }));
 }
 
 function escapeHtml(s: string): string {
@@ -505,8 +578,9 @@ export class TorontoMapboxScene {
   // Store map event handlers for cleanup
   private mapHandlers: { event: string; handler: (...args: unknown[]) => void; layer?: string }[] = [];
   // Landing page: street-level fly-through 88 Queens Quay → CN Tower → back
-  private landingStartTime: number = -1;
   private isLandingRoute: boolean = false;
+  private landingLoopToken: number = 0;
+  private landingInitialFlightInProgress: boolean = false;
   // Zone GeoJSON fetched from backend (single source of truth)
   private residentialGeoJSON: GeoJSON.FeatureCollection | null = null;
   private workGeoJSON: GeoJSON.FeatureCollection | null = null;
@@ -802,33 +876,6 @@ export class TorontoMapboxScene {
   updateState(hourOfDay: number): void {
     if (!this.map || !this.map.isStyleLoaded()) return;
 
-    // Landing route: drive camera along street-level path when welcome screen is shown
-    if (this.isLandingRoute && this.landingStartTime >= 0) {
-      const elapsed = performance.now() - this.landingStartTime;
-      const loopTime = elapsed % LANDING_ROUTE_DURATION_MS;
-      const t = loopTime / LANDING_ROUTE_DURATION_MS;
-      const n = LANDING_ROUTE.length - 1;
-      const seg = Math.min(Math.floor(t * n), n - 1);
-      const segT = (t * n) - seg;
-      const a = LANDING_ROUTE[seg];
-      const b = LANDING_ROUTE[seg + 1];
-      const lng = a.lng + (b.lng - a.lng) * segT;
-      const lat = a.lat + (b.lat - a.lat) * segT;
-      let bearing = a.bearing + (b.bearing - a.bearing) * segT;
-      if (Math.abs(b.bearing - a.bearing) > 180) {
-        if (b.bearing > a.bearing) bearing = a.bearing - (360 - b.bearing + a.bearing) * segT;
-        else bearing = a.bearing + (360 - a.bearing + b.bearing) * segT;
-      }
-      bearing = ((bearing % 360) + 360) % 360;
-      this.map.jumpTo({
-        center: [lng, lat],
-        zoom: LANDING_ZOOM,
-        pitch: LANDING_PITCH,
-        bearing,
-      });
-      return;
-    }
-
     const timeOfDay = hourOfDay / 24;
     const isNight = timeOfDay < 0.25 || timeOfDay > 0.75;
     const mode = isNight ? "dark" : "light";
@@ -927,25 +974,70 @@ export class TorontoMapboxScene {
     }
   }
 
+  private beginLandingLoop(startIndex: number = 0): void {
+    if (!this.map || !this.isLandingRoute) return;
+
+    const segmentCount = LANDING_ROUTE.length - 1;
+    let segmentIndex = Math.max(0, Math.min(startIndex, segmentCount - 1));
+    const token = ++this.landingLoopToken;
+
+    const runSegment = () => {
+      if (!this.map || !this.isLandingRoute || token !== this.landingLoopToken) return;
+      const nextIndex = (segmentIndex + 1) % segmentCount;
+      const next = LANDING_ROUTE[nextIndex];
+      this.map.easeTo({
+        center: [next.lng, next.lat],
+        zoom: LANDING_ZOOM,
+        pitch: LANDING_PITCH,
+        bearing: next.bearing,
+        duration: LANDING_SEGMENT_DURATION_MS,
+        easing: (t) => t,
+        essential: true,
+      });
+      this.map.once("moveend", () => {
+        if (!this.map || !this.isLandingRoute || token !== this.landingLoopToken) return;
+        segmentIndex = nextIndex;
+        runSegment();
+      });
+    };
+
+    const current = LANDING_ROUTE[segmentIndex];
+    this.map.jumpTo({
+      center: [current.lng, current.lat],
+      zoom: LANDING_ZOOM,
+      pitch: LANDING_PITCH,
+      bearing: current.bearing,
+    });
+    runSegment();
+  }
+
   /** Start street-level fly-through from 88 Queens Quay → CN Tower → back (landing page). */
   startLandingRoute(): void {
-    this.isLandingRoute = true;
     if (!this.map) return;
+    if (this.isLandingRoute || this.landingInitialFlightInProgress) return;
+    this.isLandingRoute = true;
+    this.landingLoopToken += 1;
+    this.map.stop();
 
     const k = LANDING_ROUTE[0];
     const dest = { center: [k.lng, k.lat] as [number, number], zoom: LANDING_ZOOM, pitch: LANDING_PITCH, bearing: k.bearing };
+    const startLoop = () => {
+      if (!this.map || !this.isLandingRoute) return;
+      this.landingInitialFlightInProgress = false;
+      this.beginLandingLoop(0);
+    };
 
     if (!this.initialZoomDone) {
       this.initialZoomDone = true;
+      this.landingInitialFlightInProgress = true;
       const zoomInFromEarth = () => {
+        if (!this.map || !this.isLandingRoute) return;
         this.map!.flyTo({
           ...dest,
           duration: 4200,
           essential: true,
         });
-        this.map!.once("moveend", () => {
-          this.landingStartTime = performance.now();
-        });
+        this.map!.once("moveend", startLoop);
       };
       if (this.map.getZoom() > 3) {
         this.map.jumpTo({ center: TORONTO_CENTER, zoom: 2, pitch: 0, bearing: 0 });
@@ -956,15 +1048,16 @@ export class TorontoMapboxScene {
       return;
     }
 
-    this.landingStartTime = performance.now();
-    this.map.jumpTo(dest);
+    startLoop();
   }
 
   /** Stop landing route: switch to simulation style, then ease to default view. */
   stopLandingRoute(): void {
     this.isLandingRoute = false;
-    this.landingStartTime = -1;
+    this.landingInitialFlightInProgress = false;
+    this.landingLoopToken += 1;
     if (this.map) {
+      this.map.stop();
       this.switchingToSimulationStyle = true;
       this.map.setStyle(MAPBOX_STYLE_SIMULATION);
     }
@@ -982,6 +1075,9 @@ export class TorontoMapboxScene {
   dispose(): void {
     cancelAnimationFrame(this.animationId);
     this.animationId = 0;
+    this.isLandingRoute = false;
+    this.landingInitialFlightInProgress = false;
+    this.landingLoopToken += 1;
 
     // Remove window-level listeners
     if (this.onMouseMove) window.removeEventListener("mousemove", this.onMouseMove);

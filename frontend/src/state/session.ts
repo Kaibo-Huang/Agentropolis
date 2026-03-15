@@ -26,8 +26,14 @@ function toMapFollower(f: FollowerResponse): MapFollower {
     follower_id: f.follower_id,
     archetype_id: f.archetype_id,
     name: f.name,
+    industry: f.industry,
     position: toMapbox(f.position),
     happiness: f.happiness,
+    recent_memories: (f.recent_memories ?? []).map((m) => ({
+      virtual_time: m.virtual_time,
+      action_type: m.action_type,
+      thinking: m.thinking,
+    })),
     avatar: avatar ?? undefined,
   };
 }
@@ -166,12 +172,17 @@ export class SessionController {
       });
       this.cb.onTickComplete(tickResult);
 
-      // If WS streamed incremental updates during the tick, followers and posts
-      // are already current — only refresh session state (for virtual_time).
-      // Otherwise do the full refresh as a fallback.
+      // If WS streamed incremental updates during the tick, movement/happiness/posts
+      // are already current. Refresh followers anyway so popup fields like
+      // recent memories stay in sync.
       if (this._wsTickUpdateCount > 0) {
-        const sessionRes = await this.api.getSession(this.session.session_id);
+        const [sessionRes, followerRes] = await Promise.all([
+          this.api.getSession(this.session.session_id),
+          this.api.getFollowers(this.session.session_id, 0, 1000),
+        ]);
         this.session = sessionRes;
+        this.followers = followerRes.followers.map(toMapFollower);
+        this.cb.onFollowersUpdate(this.followers);
         this.cb.onSessionUpdate(this.session);
       } else {
         const [sessionRes, followerRes, postRes] = await Promise.all([

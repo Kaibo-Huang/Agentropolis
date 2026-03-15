@@ -30,10 +30,17 @@ export interface TickResponse {
 
 // ── Followers ──
 
+export interface FollowerMemoryResponse {
+  virtual_time: string;
+  action_type: string;
+  thinking: string;
+}
+
 export interface FollowerResponse {
   follower_id: number;
   archetype_id: number;
   name: string;
+  industry: string | null;
   age: number | null;
   gender: string | null;
   race: string | null;
@@ -43,6 +50,7 @@ export interface FollowerResponse {
   status_ailments: string[] | null;
   happiness: number;
   volatility: number;
+  recent_memories: FollowerMemoryResponse[];
   /** Present after avatar migration; used to resolve avatar for rendering */
   avatar_seed?: number | null;
   avatar_params?: AvatarParamsResponse | null;

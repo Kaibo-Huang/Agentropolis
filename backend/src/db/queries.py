@@ -287,6 +287,66 @@ async def get_recent_memories(
     return list(result.scalars().all())
 
 
+async def get_recent_memory_summaries_for_archetypes(
+    db: AsyncSession,
+    session_id: uuid.UUID,
+    archetype_ids: list[int],
+    limit_per_archetype: int = 3,
+) -> dict[int, list[dict[str, Any]]]:
+    """
+    Return up to `limit_per_archetype` recent memory summaries per archetype.
+
+    Each summary contains: virtual_time, action_type, thinking.
+    """
+    if not archetype_ids or limit_per_archetype <= 0:
+        return {}
+
+    ranked_memories = (
+        select(
+            Memory.archetype_id.label("archetype_id"),
+            Memory.virtual_time.label("virtual_time"),
+            Memory.action_type.label("action_type"),
+            Memory.thinking.label("thinking"),
+            func.row_number()
+            .over(
+                partition_by=Memory.archetype_id,
+                order_by=Memory.virtual_time.desc(),
+            )
+            .label("rank_idx"),
+        )
+        .where(
+            Memory.session_id == session_id,
+            Memory.archetype_id.in_(archetype_ids),
+        )
+        .subquery()
+    )
+
+    result = await db.execute(
+        select(
+            ranked_memories.c.archetype_id,
+            ranked_memories.c.virtual_time,
+            ranked_memories.c.action_type,
+            ranked_memories.c.thinking,
+        )
+        .where(ranked_memories.c.rank_idx <= limit_per_archetype)
+        .order_by(
+            ranked_memories.c.archetype_id,
+            ranked_memories.c.virtual_time.desc(),
+        )
+    )
+
+    summaries: dict[int, list[dict[str, Any]]] = {aid: [] for aid in archetype_ids}
+    for row in result.mappings().all():
+        summaries[row["archetype_id"]].append(
+            {
+                "virtual_time": row["virtual_time"],
+                "action_type": row["action_type"],
+                "thinking": row["thinking"],
+            }
+        )
+    return summaries
+
+
 async def batch_insert_memories(
     db: AsyncSession, memories_data: list[dict]
 ) -> None:

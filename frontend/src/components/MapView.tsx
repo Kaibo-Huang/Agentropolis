@@ -24,10 +24,6 @@ export default function MapView() {
       () => useSimulationStore.getState().hourOfDay,
     );
 
-    if (useSimulationStore.getState().showWelcome) {
-      scene.startLandingRoute();
-    }
-
     return () => {
       scene.dispose();
       sceneRef.current = null;

@@ -28,8 +28,14 @@ function toMapFollower(f: FollowerResponse): MapFollower {
     follower_id: f.follower_id,
     archetype_id: f.archetype_id,
     name: f.name,
+    industry: f.industry,
     position: toMapbox(f.position),
     happiness: f.happiness,
+    recent_memories: (f.recent_memories ?? []).map((m) => ({
+      virtual_time: m.virtual_time,
+      action_type: m.action_type,
+      thinking: m.thinking,
+    })),
     age: f.age,
     gender: f.gender,
     race: f.race,
@@ -402,11 +408,16 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
         liveTickActive = false;
 
         // If WS streamed incremental updates, followers/posts are already
-        // current — only refresh session. Otherwise do full REST refresh.
+        // current for movement/happiness/posts. Refresh followers anyway so
+        // popup fields like recent memories stay in sync.
         if (wsTickUpdateCount > 0) {
-          const sessionRes = await api.getSession(session.session_id);
+          const [sessionRes, followerRes] = await Promise.all([
+            api.getSession(session.session_id),
+            api.getFollowers(session.session_id, 0, 1000),
+          ]);
           set({
             session: sessionRes,
+            followers: followerRes.followers.map(toMapFollower),
             hourOfDay: computeHourOfDay(sessionRes),
           });
         } else {
