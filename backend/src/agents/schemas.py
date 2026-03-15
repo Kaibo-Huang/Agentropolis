@@ -59,9 +59,9 @@ class ArchetypeAction(BaseModel):
         "attend_event",
         "visit_family",
     ]
-    action_params: ActionParams
+    action_params: ActionParams = Field(default_factory=ActionParams)
     duration: float = Field(description="Duration in hours")
-    thinking: str = Field(description="1 sentence max")
+    thinking: str = Field(max_length=200, description="1 sentence max")
 
 
 class ArchetypeResponse(BaseModel):
@@ -79,7 +79,8 @@ class FollowerVariation(BaseModel):
     model_config = ConfigDict(json_schema_extra=_make_strict)
 
     follower_id: int
-    happiness_delta: float = Field(ge=-0.2, le=0.2)
+    happiness_delta: float = Field(default=0.0, ge=-0.2, le=0.2)
+    timing_offset_minutes: int = Field(default=0, ge=-15, le=15)
     tweet_text: str | None = None
     position: list[float] | None = None  # [lat, lng] override
 
