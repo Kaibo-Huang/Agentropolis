@@ -39,24 +39,27 @@ export default function HUD() {
       </div>
       <div className="hud-center">
         <div className="hud-time-controls">
-          <button
-            type="button"
-            className="btn"
-            disabled={phase !== "ready" && phase !== "auto_running"}
-            onClick={() => (isAutoRunning ? stopAutoRun() : startAutoRun())}
-            aria-label={isAutoRunning ? "Pause simulation" : "Play simulation"}
-          >
-            {isAutoRunning ? "Pause" : "Play"}
-          </button>
           <div className="time-day">{dayDisplay}</div>
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={!canTick}
-            onClick={() => tickOnce()}
-          >
-            {">> +1h"}
-          </button>
+          <div className="hud-time-buttons">
+            <button
+              type="button"
+              className="btn"
+              disabled={phase !== "ready" && phase !== "auto_running"}
+              onClick={() => (isAutoRunning ? stopAutoRun() : startAutoRun())}
+              aria-label={isAutoRunning ? "Pause simulation" : "Play simulation"}
+            >
+              <span aria-hidden>{isAutoRunning ? "⏸" : "▶"}</span>
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={!canTick}
+              onClick={() => tickOnce()}
+              aria-label="Advance simulation by 1 hour"
+            >
+              <span aria-hidden>⏩</span>
+            </button>
+          </div>
         </div>
       </div>
       <div className="hud-right">
