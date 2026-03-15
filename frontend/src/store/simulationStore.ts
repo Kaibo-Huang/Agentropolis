@@ -7,6 +7,8 @@ import type {
   PostResponse,
   AvatarParamsResponse,
   TickResponse,
+  WsFollowerUpdate,
+  WsPostUpdate,
 } from "../api/types";
 import type { MapFollower } from "../world/toronto-mapbox";
 import { resolveAvatar } from "../avatar/resolveAvatar";
@@ -80,7 +82,7 @@ export interface SimulationState {
   isToolkitOpenMobile: boolean;
 
   // Actions
-  createAndConnect: () => Promise<void>;
+  createAndConnect: (prompt?: string) => Promise<void>;
   tickOnce: () => Promise<void>;
   startAutoRun: () => void;
   stopAutoRun: () => void;
@@ -124,6 +126,8 @@ let ticking = false;
 let consecutiveFailures = 0;
 let prefetching = false;
 let pendingPrefetchResolvers: Array<() => void> = [];
+let wsTickUpdateCount = 0;
+let liveTickActive = false;
 
 export const useSimulationStore = create<SimulationState>((set, get) => {
   function log(msg: string) {
@@ -237,7 +241,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
     // Actions
     log,
 
-    async createAndConnect() {
+    async createAndConnect(prompt?: string) {
       set({ phase: "loading" });
       let sessionId: string | null = null;
       try {
@@ -259,7 +263,66 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
             if (msg.type === "subscribed") {
               log("WebSocket subscribed");
             } else if (msg.type === "error") {
-              log(`WS error: ${msg.data.message}`);
+              const data = msg.data as { message?: string };
+              log(`WS error: ${data?.message ?? "unknown"}`);
+            } else if (msg.type === "tick_start") {
+              const data = msg.data as { tick_number: number; archetype_count: number };
+              log(`Tick #${data.tick_number} started — ${data.archetype_count} archetypes`);
+            } else if (msg.type === "tick_archetype_update") {
+              if (!liveTickActive) return;
+              const data = msg.data as {
+                archetype_id: number;
+                followers: WsFollowerUpdate[];
+                posts: WsPostUpdate[];
+              };
+              wsTickUpdateCount++;
+
+              if (data.followers.length > 0) {
+                const updates = new Map(data.followers.map((f) => [f.follower_id, f]));
+                set((s) => ({
+                  followers: s.followers.map((f) => {
+                    const u = updates.get(f.follower_id);
+                    if (!u) return f;
+                    return {
+                      ...f,
+                      happiness: u.happiness,
+                      position: u.position
+                        ? toMapbox(u.position as [number, number])
+                        : f.position,
+                    };
+                  }),
+                }));
+              }
+
+              if (data.posts.length > 0) {
+                const newPosts: PostResponse[] = data.posts.map((p) => ({
+                  post_id: p.post_id,
+                  follower_id: p.follower_id,
+                  text: p.text,
+                  virtual_time: p.virtual_time,
+                  created_at: null as unknown as string,
+                }));
+                set((s) => ({
+                  posts: [...newPosts, ...s.posts].slice(0, 100),
+                }));
+              }
+            } else if (msg.type === "tick_complete") {
+              if (!liveTickActive) return;
+              const data = msg.data as {
+                tick_number: number;
+                virtual_time: string;
+                archetypes_processed: number;
+                archetypes_failed: number;
+              };
+              set((s) => {
+                if (!s.session) return {};
+                const updatedSession = { ...s.session, virtual_time: data.virtual_time };
+                return {
+                  session: updatedSession,
+                  hourOfDay: computeHourOfDay(updatedSession),
+                };
+              });
+              log(`Tick #${data.tick_number} complete — ${data.archetypes_processed} OK, ${data.archetypes_failed} fail`);
             }
           },
           (state) => log(`WS: ${state}`),
@@ -284,8 +347,16 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
           `Ready: ${followers.length} followers, ${archetypeRes.archetypes.length} archetypes`,
         );
 
-        // 5. Start preprocessing the first tick in the background
-        preprocessNextTick();
+        // Inject the user's simulation prompt as the first event
+        if (prompt) {
+          try {
+            await api.injectEvent(session.session_id, { event_prompt: prompt });
+            log(`Event injected: "${prompt.substring(0, 60)}${prompt.length > 60 ? "..." : ""}"`);
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            log(`Event injection failed: ${message}`);
+          }
+        }
       } catch (err) {
         // Cleanup orphaned session if it was created
         if (sessionId) {
@@ -316,68 +387,45 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
       ticking = true;
 
       try {
-        // --- Try cache ---
-        let cached = readPrefetchCache(session.session_id);
-
-        if (!cached && prefetching) {
-          // Wait for in-flight prefetch to finish
-          await new Promise<void>((resolve) => {
-            pendingPrefetchResolvers.push(resolve);
-          });
-          cached = readPrefetchCache(session.session_id);
-        }
-
-        if (cached) {
-          // 1. Apply cached session to store FIRST so preprocessNextTick()
-          //    reads the correct virtual_time when computing next target_time.
-          const followers = cached.followers.map(toMapFollower);
-          const vtDisplay = new Date(
-            cached.session.virtual_time,
-          ).toLocaleString("en-CA", { timeZone: "America/Toronto" });
-          set({
-            session: cached.session,
-            followers,
-            posts: cached.posts,
-            hourOfDay: computeHourOfDay(cached.session),
-          });
-          log(
-            `Tick ${cached.tickResponse.tick_number}: ${vtDisplay} (${cached.tickResponse.archetypes_processed} OK, ${cached.tickResponse.archetypes_failed} fail)`,
-          );
-          consecutiveFailures = 0;
-          clearPrefetchCache();
-          if (prevPhase === "ready") set({ phase: "ready" });
-
-          // 2. Fire next prefetch immediately — session.virtual_time is now
-          //    updated so preprocessNextTick() computes the correct target_time.
-          preprocessNextTick();
-          return;
-        }
-
-        // --- Fallback: live tick (no cache) ---
+        // --- Live tick (streaming via WS) ---
+        clearPrefetchCache();
         const currentVt = new Date(session.virtual_time);
         const targetVt = new Date(currentVt.getTime() + 3_600_000);
+
+        wsTickUpdateCount = 0;
+        liveTickActive = true;
 
         const tickResult = await api.tick(session.session_id, {
           target_time: targetVt.toISOString(),
         });
 
-        // Refresh session state + followers + posts in parallel
-        const [sessionRes, followerRes, postRes] = await Promise.all([
-          api.getSession(session.session_id),
-          api.getFollowers(session.session_id, 0, 1000),
-          api.getPosts(session.session_id, 0, 20),
-        ]);
+        liveTickActive = false;
 
-        const followers = followerRes.followers.map(toMapFollower);
-        set({
-          session: sessionRes,
-          followers,
-          posts: postRes.posts,
-          hourOfDay: computeHourOfDay(sessionRes),
-        });
+        // If WS streamed incremental updates, followers/posts are already
+        // current — only refresh session. Otherwise do full REST refresh.
+        if (wsTickUpdateCount > 0) {
+          const sessionRes = await api.getSession(session.session_id);
+          set({
+            session: sessionRes,
+            hourOfDay: computeHourOfDay(sessionRes),
+          });
+        } else {
+          const [sessionRes, followerRes, postRes] = await Promise.all([
+            api.getSession(session.session_id),
+            api.getFollowers(session.session_id, 0, 1000),
+            api.getPosts(session.session_id, 0, 20),
+          ]);
+          set({
+            session: sessionRes,
+            followers: followerRes.followers.map(toMapFollower),
+            posts: postRes.posts,
+            hourOfDay: computeHourOfDay(sessionRes),
+          });
+        }
 
+        const { session: updatedSession } = get();
         const vtDisplay = new Date(
-          sessionRes.virtual_time,
+          updatedSession!.virtual_time,
         ).toLocaleString("en-CA", { timeZone: "America/Toronto" });
         log(
           `Tick ${tickResult.tick_number}: ${vtDisplay} (${tickResult.archetypes_processed} OK, ${tickResult.archetypes_failed} fail)`,
@@ -385,9 +433,6 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
 
         consecutiveFailures = 0;
         if (prevPhase === "ready") set({ phase: "ready" });
-
-        // Start preprocessing next tick after successful live tick
-        preprocessNextTick();
       } catch (err) {
         const message =
           err instanceof Error ? err.message : String(err);
@@ -410,6 +455,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
         }
       } finally {
         ticking = false;
+        liveTickActive = false;
       }
     },
 
@@ -521,11 +567,6 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
 
     dismissWelcome() {
       set({ showWelcome: false });
-      try {
-        if (typeof localStorage !== "undefined") {
-          localStorage.setItem("agentropolis_welcomed", "true");
-        }
-      } catch {}
     },
   };
 });

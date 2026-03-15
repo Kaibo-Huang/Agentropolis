@@ -63,10 +63,10 @@ class SessionConfig(BaseModel):
     """Validated simulation configuration embedded in a session."""
 
     total_population: int = Field(
-        default=500,
-        ge=500,
+        default=256,
+        ge=1,
         le=5_000,
-        description="Total number of follower agents to simulate (500–5,000).",
+        description="Total number of follower agents to simulate.",
     )
     archetype_count: int = Field(
         default=40,

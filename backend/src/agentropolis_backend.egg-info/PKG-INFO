@@ -10,3 +10,4 @@ Requires-Dist: asyncpg>=0.30.0
 Requires-Dist: pydantic>=2.5
 Requires-Dist: python-dotenv>=1.0.0
 Requires-Dist: websockets>=13.0
+Requires-Dist: shapely>=2.0

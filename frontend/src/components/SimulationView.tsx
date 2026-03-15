@@ -12,21 +12,6 @@ export default function SimulationView() {
   useKeyboardShortcuts();
   const showWelcome = useSimulationStore((s) => s.showWelcome);
 
-  // Auto-reconnect if user already dismissed welcome in a previous session
-  useEffect(() => {
-    const welcomed =
-      typeof localStorage !== "undefined" &&
-      localStorage.getItem("agentropolis_welcomed") === "true";
-    if (welcomed) {
-      const { dismissWelcome, createAndConnect, phase } =
-        useSimulationStore.getState();
-      if (phase === "idle") {
-        dismissWelcome();
-        createAndConnect();
-      }
-    }
-  }, []);
-
   // Cleanup on unmount: stop timers, disconnect WebSocket
   useEffect(() => {
     return () => {

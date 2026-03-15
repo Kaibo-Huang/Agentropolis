@@ -206,27 +206,6 @@ function easeInOut(t: number): number {
   return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
 }
 
-function interpolateFollowers(
-  from: MapFollower[],
-  to: MapFollower[],
-  t: number,
-): MapFollower[] {
-  const fromMap = new Map<number, LngLat>(
-    from.flatMap(f => f.position ? [[f.follower_id, f.position]] : [])
-  );
-  return to.map(f => {
-    if (!f.position) return f;
-    const prev = fromMap.get(f.follower_id);
-    if (!prev) return f;
-    return {
-      ...f,
-      position: [
-        prev[0] + (f.position[0] - prev[0]) * t,
-        prev[1] + (f.position[1] - prev[1]) * t,
-      ] as LngLat,
-    };
-  });
-}
 
 function buildFollowerGeoJSON(
   followers: MapFollower[],
@@ -519,9 +498,8 @@ export class TorontoMapboxScene {
   private onWheel: ((e: WheelEvent) => void) | null = null;
   private onContainerMouseDown: ((e: MouseEvent) => void) | null = null;
   private lastFollowers: MapFollower[] = [];
-  private animFromFollowers: MapFollower[] = [];
-  private animToFollowers: MapFollower[] = [];
-  private animStartTime: number = -1;
+  private followerAnimations: Map<number, { from: LngLat; to: LngLat; startTime: number }> = new Map();
+  private currentFollowers: MapFollower[] = [];
   private followerPopup: mapboxgl.Popup | null = null;
   private pendingFollowers: MapFollower[] | null = null;
   // Store map event handlers for cleanup
@@ -863,11 +841,27 @@ export class TorontoMapboxScene {
       }
     }
 
-    // Animate follower dots from their previous positions to the new ones.
-    if (this.animToFollowers.length > 0 && this.animStartTime >= 0) {
-      const raw = (performance.now() - this.animStartTime) / TRAVEL_DURATION_MS;
-      const t = easeInOut(Math.min(raw, 1));
-      const interpolated = interpolateFollowers(this.animFromFollowers, this.animToFollowers, t);
+    // Animate follower dots — each follower has its own animation timer.
+    if (this.currentFollowers.length > 0) {
+      const now = performance.now();
+      const interpolated = this.currentFollowers.map(f => {
+        if (!f.position) return f;
+        const anim = this.followerAnimations.get(f.follower_id);
+        if (!anim) return f;
+        const raw = (now - anim.startTime) / TRAVEL_DURATION_MS;
+        if (raw >= 1) {
+          this.followerAnimations.delete(f.follower_id);
+          return f;
+        }
+        const t = easeInOut(raw);
+        return {
+          ...f,
+          position: [
+            anim.from[0] + (anim.to[0] - anim.from[0]) * t,
+            anim.from[1] + (anim.to[1] - anim.from[1]) * t,
+          ] as LngLat,
+        };
+      });
       const source = this.map.getSource("followers");
       if (source && "setData" in source) {
         (source as mapboxgl.GeoJSONSource).setData(buildFollowerGeoJSON(interpolated));
@@ -884,17 +878,39 @@ export class TorontoMapboxScene {
       return;
     }
 
-    // Snapshot current display positions as the animation start
-    this.animFromFollowers = this.animToFollowers.length > 0
-      ? interpolateFollowers(
-          this.animFromFollowers,
-          this.animToFollowers,
-          this.animStartTime < 0 ? 1 : Math.min((performance.now() - this.animStartTime) / TRAVEL_DURATION_MS, 1),
-        )
-      : followers;
-    this.animToFollowers = followers;
-    this.animStartTime = performance.now();
+    const now = performance.now();
+    const prevMap = new Map(this.currentFollowers.map(f => [f.follower_id, f]));
+
+    for (const f of followers) {
+      if (!f.position) continue;
+      const prev = prevMap.get(f.follower_id);
+      const prevPos = prev?.position;
+
+      // Only start a new animation if position actually changed
+      if (prevPos && (prevPos[0] !== f.position[0] || prevPos[1] !== f.position[1])) {
+        // Resolve current display position (may be mid-animation)
+        const existing = this.followerAnimations.get(f.follower_id);
+        let fromPos: LngLat = prevPos;
+        if (existing) {
+          const t = easeInOut(Math.min((now - existing.startTime) / TRAVEL_DURATION_MS, 1));
+          fromPos = [
+            existing.from[0] + (existing.to[0] - existing.from[0]) * t,
+            existing.from[1] + (existing.to[1] - existing.from[1]) * t,
+          ];
+        }
+        this.followerAnimations.set(f.follower_id, { from: fromPos, to: f.position, startTime: now });
+      }
+    }
+
+    this.currentFollowers = followers;
     this.lastFollowers = followers;
+
+    // Immediately update the GeoJSON source so dots appear without
+    // waiting for the next render-loop frame
+    const source = this.map.getSource("followers");
+    if (source && "setData" in source) {
+      (source as mapboxgl.GeoJSONSource).setData(buildFollowerGeoJSON(followers));
+    }
   }
 
   /** Start street-level fly-through from 88 Queens Quay → CN Tower → back (landing page). */
