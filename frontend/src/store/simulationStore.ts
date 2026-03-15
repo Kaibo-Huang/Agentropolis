@@ -6,6 +6,7 @@ import type {
   ArchetypeResponse,
   PostResponse,
   AvatarParamsResponse,
+  TickResponse,
 } from "../api/types";
 import type { MapFollower } from "../world/toronto-mapbox";
 import { resolveAvatar } from "../avatar/resolveAvatar";
@@ -40,6 +41,15 @@ export type ControllerPhase =
   | "ticking"
   | "auto_running"
   | "error";
+
+interface PrefetchedTick {
+  sessionId: string;
+  tickResponse: TickResponse;
+  followers: FollowerResponse[];
+  posts: PostResponse[];
+  session: SessionResponse;
+  prefetchedAt: number;
+}
 
 const MAX_LOG_ENTRIES = 50;
 const MAX_CONSECUTIVE_FAILURES = 3;
@@ -93,12 +103,16 @@ const API_BASE =
   "http://localhost:8000";
 const WS_BASE = API_BASE.replace(/^http/, "ws");
 
+const PREFETCH_KEY = "agentropolis_prefetched_tick";
+
 // Closure state (not serializable, not part of React state)
 let api: ApiClient = new ApiClient(API_BASE);
 let socket: SimulationSocket | null = null;
 let autoRunTimer: ReturnType<typeof setTimeout> | null = null;
 let ticking = false;
 let consecutiveFailures = 0;
+let prefetching = false;
+let pendingPrefetchResolvers: Array<() => void> = [];
 
 export const useSimulationStore = create<SimulationState>((set, get) => {
   function log(msg: string) {
@@ -117,6 +131,75 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
       hour12: false,
     });
     return parseInt(torontoHour, 10) || 0;
+  }
+
+  function readPrefetchCache(sessionId: string): PrefetchedTick | null {
+    try {
+      if (typeof localStorage === "undefined") return null;
+      const raw = localStorage.getItem(PREFETCH_KEY);
+      if (!raw) return null;
+      const entry: PrefetchedTick = JSON.parse(raw);
+      if (entry.sessionId !== sessionId) return null;
+      if (Date.now() - entry.prefetchedAt > 60_000) {
+        localStorage.removeItem(PREFETCH_KEY);
+        return null;
+      }
+      return entry;
+    } catch {
+      return null;
+    }
+  }
+
+  function writePrefetchCache(data: PrefetchedTick): void {
+    try {
+      if (typeof localStorage === "undefined") return;
+      localStorage.setItem(PREFETCH_KEY, JSON.stringify(data));
+    } catch {
+      // quota error — ignore
+    }
+  }
+
+  function clearPrefetchCache(): void {
+    try {
+      if (typeof localStorage === "undefined") return;
+      localStorage.removeItem(PREFETCH_KEY);
+    } catch {}
+  }
+
+  async function preprocessNextTick(): Promise<void> {
+    if (prefetching) return;
+    const { session } = get();
+    if (!session) return;
+    prefetching = true;
+    try {
+      const currentVt = new Date(session.virtual_time);
+      const targetVt = new Date(currentVt.getTime() + 3_600_000);
+
+      // Tick first (mutates server state), then fetch updated data
+      const tickResponse = await api.tick(session.session_id, {
+        target_time: targetVt.toISOString(),
+      });
+      const [sessionRes, followerRes, postRes] = await Promise.all([
+        api.getSession(session.session_id),
+        api.getFollowers(session.session_id, 0, 200),
+        api.getPosts(session.session_id, 0, 20),
+      ]);
+
+      writePrefetchCache({
+        sessionId: session.session_id,
+        tickResponse,
+        followers: followerRes.followers,
+        posts: postRes.posts,
+        session: sessionRes,
+        prefetchedAt: Date.now(),
+      });
+    } catch {
+      clearPrefetchCache();
+    } finally {
+      prefetching = false;
+      const resolvers = pendingPrefetchResolvers.splice(0);
+      resolvers.forEach((r) => r());
+    }
   }
 
   async function autoRunLoop() {
@@ -189,6 +272,9 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
         log(
           `Ready: ${followers.length} followers, ${archetypeRes.archetypes.length} archetypes`,
         );
+
+        // 5. Start preprocessing the first tick in the background
+        preprocessNextTick();
       } catch (err) {
         // Cleanup orphaned session if it was created
         if (sessionId) {
@@ -219,7 +305,44 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
       ticking = true;
 
       try {
-        // Compute target_time = current virtual_time + 1 hour
+        // --- Try cache ---
+        let cached = readPrefetchCache(session.session_id);
+
+        if (!cached && prefetching) {
+          // Wait for in-flight prefetch to finish
+          await new Promise<void>((resolve) => {
+            pendingPrefetchResolvers.push(resolve);
+          });
+          cached = readPrefetchCache(session.session_id);
+        }
+
+        if (cached) {
+          // 1. Apply cached session to store FIRST so preprocessNextTick()
+          //    reads the correct virtual_time when computing next target_time.
+          const followers = cached.followers.map(toMapFollower);
+          const vtDisplay = new Date(
+            cached.session.virtual_time,
+          ).toLocaleString("en-CA", { timeZone: "America/Toronto" });
+          set({
+            session: cached.session,
+            followers,
+            posts: cached.posts,
+            hourOfDay: computeHourOfDay(cached.session),
+          });
+          log(
+            `Tick ${cached.tickResponse.tick_number}: ${vtDisplay} (${cached.tickResponse.archetypes_processed} OK, ${cached.tickResponse.archetypes_failed} fail)`,
+          );
+          consecutiveFailures = 0;
+          clearPrefetchCache();
+          if (prevPhase === "ready") set({ phase: "ready" });
+
+          // 2. Fire next prefetch immediately — session.virtual_time is now
+          //    updated so preprocessNextTick() computes the correct target_time.
+          preprocessNextTick();
+          return;
+        }
+
+        // --- Fallback: live tick (no cache) ---
         const currentVt = new Date(session.virtual_time);
         const targetVt = new Date(currentVt.getTime() + 3_600_000);
 
@@ -251,6 +374,9 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
 
         consecutiveFailures = 0;
         if (prevPhase === "ready") set({ phase: "ready" });
+
+        // Start preprocessing next tick after successful live tick
+        preprocessNextTick();
       } catch (err) {
         const message =
           err instanceof Error ? err.message : String(err);
@@ -343,6 +469,10 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
     },
 
     async disconnect() {
+      clearPrefetchCache();
+      prefetching = false;
+      pendingPrefetchResolvers = [];
+
       get().stopAutoRun();
       socket?.disconnect();
       socket = null;
@@ -373,6 +503,11 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
 
     dismissWelcome() {
       set({ showWelcome: false });
+      try {
+        if (typeof localStorage !== "undefined") {
+          localStorage.setItem("agentropolis_welcomed", "true");
+        }
+      } catch {}
     },
   };
 });
