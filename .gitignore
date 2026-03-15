@@ -39,5 +39,3 @@ Thumbs.db
 venv/
 *.vite
 *.egg.info/
-uv.lock
-**/uv.lock
