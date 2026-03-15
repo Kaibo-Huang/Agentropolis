@@ -1,13 +1,14 @@
 "use client";
 
 import { useSimulationStore } from "../store/simulationStore";
+import StarBorderInput from "./StarBorderInput";
 
 export default function WelcomeScreen() {
   const showWelcome = useSimulationStore((s) => s.showWelcome);
   const dismissWelcome = useSimulationStore((s) => s.dismissWelcome);
   const createAndConnect = useSimulationStore((s) => s.createAndConnect);
 
-  const handleStart = () => {
+  const handleSubmit = () => {
     dismissWelcome();
     createAndConnect();
   };
@@ -21,22 +22,15 @@ export default function WelcomeScreen() {
           className="welcome-logo"
         />
         <p className="welcome-tagline">
-          A living city simulation. Watch AI agents move through Toronto — run
-          time, create your avatar, and inject events.
+        A living city simulation.<br></br>
+        Watch thousands of AI agents move through Toronto in real time.
         </p>
-        <ul className="welcome-features">
-          <li>Moving arrows show where each agent is heading</li>
-          <li>Tick or Auto-Run to advance the simulation</li>
-          <li>Create your avatar and join the crowd</li>
-          <li>Inject events to shape the city</li>
-        </ul>
-        <button
-          type="button"
-          className="btn btn-primary btn-welcome-start"
-          onClick={handleStart}
-        >
-          Enter the city
-        </button>
+        <StarBorderInput
+          className="welcome-simulate-input"
+          placeholder="What do you want to simulate?"
+          aria-label="What do you want to simulate?"
+          onSubmit={handleSubmit}
+        />
       </div>
     </div>
   );
