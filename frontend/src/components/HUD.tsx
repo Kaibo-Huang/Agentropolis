@@ -57,7 +57,7 @@ export default function HUD() {
               onClick={() => tickOnce()}
               aria-label="Advance simulation by 1 hour"
             >
-              <span aria-hidden>⏩</span>
+              <span aria-hidden>⏭</span>
             </button>
           </div>
         </div>
