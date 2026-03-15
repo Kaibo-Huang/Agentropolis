@@ -164,7 +164,7 @@ async def _prefetch_archetype_context(
         relationships,
     ) = await asyncio.gather(
         queries.get_events_for_session(db, session_id),
-        queries.get_recent_memories(db, session_id, archetype.archetype_id, 10),
+        queries.get_recent_memories(db, session_id, archetype.archetype_id, 5),
         queries.get_follower_stats(db, session_id, archetype.archetype_id),
         queries.get_locations_by_region(db, work, None),
         queries.get_locations_by_region(db, home, None),
@@ -175,33 +175,19 @@ async def _prefetch_archetype_context(
         "current_time": current_time.isoformat(),
         "actions_finish_at": current_time.isoformat(),
         "next_tick_time": next_tick_time.isoformat(),
-        "events": [
-            {"prompt": e.event_prompt, "time": e.virtual_time.isoformat()}
-            for e in events
-        ],
+        "events": [e.event_prompt for e in events],
         "recent_memories": [
-            {
-                "time": m.virtual_time.isoformat(),
-                "action_type": m.action_type,
-                "duration": m.duration,
-                "thinking": m.thinking,
-            }
+            {"action": m.action_type, "duration": m.duration, "thinking": m.thinking}
             for m in memories
         ],
         "follower_stats": {
-            k: float(v) if v is not None else None
+            k: round(float(v), 2) if v is not None else None
             for k, v in follower_stats.items()
         },
-        "work_locations": [
-            {"name": loc.name, "type": loc.type, "position": loc.position}
-            for loc in work_locations
-        ],
-        "home_locations": [
-            {"name": loc.name, "type": loc.type, "position": loc.position}
-            for loc in home_locations
-        ],
+        "work_locations": [loc.name for loc in work_locations[:5]],
+        "home_locations": [loc.name for loc in home_locations[:5]],
         "relationships": {
-            k: float(v) if v is not None else None
+            k: round(float(v), 2) if v is not None else None
             for k, v in relationships.items()
         },
     }
@@ -358,7 +344,7 @@ async def _get_archetype_decision(
             with rt.Session(
                 name=f"tick-{session_id}-arch-{archetype.archetype_id}",
                 context=session_context,
-                timeout=30.0,
+                timeout=15.0,
                 save_state=False,
             ):
                 user_msg = f"Make decisions for tick {tick_number}."

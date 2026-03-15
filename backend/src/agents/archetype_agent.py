@@ -13,7 +13,7 @@ import railtracks as rt
 
 from src.agents.schemas import ArchetypeResponse
 
-archetype_llm = rt.llm.OpenAILLM("gpt-4.1")
+archetype_llm = rt.llm.OpenAILLM("gpt-4.1-mini")
 
 
 def build_archetype_agent(archetype, prefetched_context: dict | None = None):
