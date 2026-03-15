@@ -143,27 +143,39 @@ const WORK_BUFFER = 0.003; // ~300m buffer around original bounds
 // MUST be counter-clockwise for Sutherland-Hodgman clipping (isInside test).
 const LAND_POLYGON: [number, number][] = [
   // Start NW, go CCW: west edge down, shoreline west-to-east, east edge up, top edge west
-  [-79.46, 43.71],
-  [-79.46, 43.633],    // SW: Exhibition / Ontario Place waterfront
-  // Shoreline waypoints (west to east)
-  [-79.420, 43.635],   // CNE shoreline
-  [-79.405, 43.634],   // Bathurst Quay
-  [-79.395, 43.636],   // Spadina Quay / HTO Park
+  // Extended to cover full viewport at zoom 13 with pitch on large screens
+  [-79.55, 43.75],
+  [-79.55, 43.628],    // SW: far west (Humber Bay / Mimico)
+  // Shoreline waypoints (west to east) — refined to track actual waterfront
+  [-79.45, 43.630],    // Humber Bay east
+  [-79.435, 43.631],   // Sunnyside area
+  [-79.425, 43.631],   // Exhibition Place west / Marilyn Bell Park
+  [-79.418, 43.630],   // BMO Field / Exhibition Place south edge
+  [-79.412, 43.631],   // Ontario Place / Budweiser Stage
+  [-79.407, 43.632],   // Stadium Rd / Fort York approach
+  [-79.402, 43.633],   // Bathurst Quay / Portland slip
+  [-79.398, 43.634],   // Music Garden
+  [-79.395, 43.635],   // Spadina Quay / HTO Park
+  [-79.389, 43.636],   // Rees St slip
   [-79.383, 43.637],   // York Quay / Harbourfront Centre
+  [-79.378, 43.637],   // York / Simcoe slip
   [-79.373, 43.638],   // Yonge Quay / Jack Layton Ferry Terminal
+  [-79.368, 43.638],   // Jarvis / Queens Quay
   [-79.363, 43.639],   // Jarvis slip
+  [-79.358, 43.640],   // Parliament slip
   [-79.350, 43.641],   // Sugar Beach / Sherbourne Common
   [-79.340, 43.644],   // Keating Channel / Villiers Island
   [-79.330, 43.646],   // Cherry Beach approach
   [-79.30, 43.648],    // East Bayfront / Port Lands
   // East edge up to NE
-  [-79.30, 43.71],
+  [-79.24, 43.648],
+  [-79.24, 43.75],
   // Close
-  [-79.46, 43.71],
+  [-79.55, 43.75],
 ];
 
 // Voronoi bounding box (must cover LAND_POLYGON entirely)
-const VORONOI_BOUNDS: [number, number, number, number] = [-79.46, 43.63, -79.30, 43.71];
+const VORONOI_BOUNDS: [number, number, number, number] = [-79.55, 43.62, -79.24, 43.75];
 
 /**
  * Sutherland-Hodgman polygon clipping algorithm.
