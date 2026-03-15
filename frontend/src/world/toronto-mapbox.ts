@@ -24,6 +24,9 @@ export interface MapFollower {
   name: string;
   position: LngLat | null;
   happiness: number;
+  age?: number | null;
+  gender?: string | null;
+  race?: string | null;
   /** Resolved avatar params for future avatar layer; undefined if not resolved */
   avatar?: MapFollowerAvatar;
 }
