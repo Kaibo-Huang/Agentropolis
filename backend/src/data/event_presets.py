@@ -57,8 +57,8 @@ happiness_delta (float | null, -0.3 to +0.3)
 happiness_per_industry (list | null, e.g. [{"industry": "Tech", "value": -0.15}])
   Additional per-industry happiness modifier (stacks with global).
 
-tweet_rate_multiplier (float | null, 1.0–5.0)
-  Multiplier on the base 10% tweet rate.  2.0 = twice as many tweets.
+tweet_rate_multiplier (float | null, 1.0–3.0)
+  Multiplier on the base tweet rate.  1.75 is typical for major events.
 
 tweet_sentiment (string | null)
   One-word mood hint for tweet generation, e.g. "fearful", "angry",
@@ -99,7 +99,7 @@ EVENT_PRESET_EXAMPLES: list[dict] = [
             "stay_home_rate": 0.80,
             "happiness_delta": -0.15,
             "happiness_per_industry": None,
-            "tweet_rate_multiplier": 2.5,
+            "tweet_rate_multiplier": 1.75,
             "tweet_sentiment": "fearful",
             "disease_transmission_multiplier": 3.0,
             "gathering_zones": [{"zone_name": "Hospital Row", "pull_strength": 0.15, "start_hour": 0, "end_hour": 0}],
@@ -114,7 +114,7 @@ EVENT_PRESET_EXAMPLES: list[dict] = [
             "stay_home_rate": 0.30,
             "happiness_delta": -0.12,
             "happiness_per_industry": [{"industry": "Finance", "value": -0.04}],
-            "tweet_rate_multiplier": 2.5,
+            "tweet_rate_multiplier": 1.75,
             "tweet_sentiment": "angry",
             "disease_transmission_multiplier": None,
             "gathering_zones": [{"zone_name": "Financial District", "pull_strength": 0.3, "start_hour": 9, "end_hour": 18}],
@@ -129,7 +129,7 @@ EVENT_PRESET_EXAMPLES: list[dict] = [
             "stay_home_rate": None,
             "happiness_delta": 0.10,
             "happiness_per_industry": [{"industry": "Finance", "value": 0.04}],
-            "tweet_rate_multiplier": 2.0,
+            "tweet_rate_multiplier": 1.75,
             "tweet_sentiment": "celebratory",
             "disease_transmission_multiplier": None,
             "gathering_zones": [{"zone_name": "Financial District", "pull_strength": 0.2, "start_hour": 15, "end_hour": 23}],
@@ -144,7 +144,7 @@ EVENT_PRESET_EXAMPLES: list[dict] = [
             "stay_home_rate": None,
             "happiness_delta": 0.10,
             "happiness_per_industry": None,
-            "tweet_rate_multiplier": 2.0,
+            "tweet_rate_multiplier": 1.75,
             "tweet_sentiment": "excited",
             "disease_transmission_multiplier": None,
             "gathering_zones": [
@@ -162,7 +162,7 @@ EVENT_PRESET_EXAMPLES: list[dict] = [
             "stay_home_rate": 0.60,
             "happiness_delta": -0.10,
             "happiness_per_industry": None,
-            "tweet_rate_multiplier": 2.5,
+            "tweet_rate_multiplier": 1.75,
             "tweet_sentiment": "frustrated",
             "disease_transmission_multiplier": None,
             "gathering_zones": [{"zone_name": "Government District", "pull_strength": 0.15, "start_hour": 8, "end_hour": 18}],
@@ -177,7 +177,7 @@ EVENT_PRESET_EXAMPLES: list[dict] = [
             "stay_home_rate": 0.85,
             "happiness_delta": -0.10,
             "happiness_per_industry": None,
-            "tweet_rate_multiplier": 2.0,
+            "tweet_rate_multiplier": 1.75,
             "tweet_sentiment": "anxious",
             "disease_transmission_multiplier": None,
             "gathering_zones": None,
@@ -192,7 +192,7 @@ EVENT_PRESET_EXAMPLES: list[dict] = [
             "stay_home_rate": None,
             "happiness_delta": -0.05,
             "happiness_per_industry": [{"industry": "Tech", "value": -0.10}],
-            "tweet_rate_multiplier": 2.5,
+            "tweet_rate_multiplier": 1.75,
             "tweet_sentiment": "anxious",
             "disease_transmission_multiplier": None,
             "gathering_zones": [{"zone_name": "Tech Corridor", "pull_strength": 0.15, "start_hour": 10, "end_hour": 17}],
@@ -207,7 +207,7 @@ EVENT_PRESET_EXAMPLES: list[dict] = [
             "stay_home_rate": None,
             "happiness_delta": 0.05,
             "happiness_per_industry": None,
-            "tweet_rate_multiplier": 3.0,
+            "tweet_rate_multiplier": 1.75,
             "tweet_sentiment": "passionate",
             "disease_transmission_multiplier": None,
             "gathering_zones": [
@@ -225,7 +225,7 @@ EVENT_PRESET_EXAMPLES: list[dict] = [
             "stay_home_rate": 0.40,
             "happiness_delta": -0.08,
             "happiness_per_industry": None,
-            "tweet_rate_multiplier": 2.0,
+            "tweet_rate_multiplier": 1.75,
             "tweet_sentiment": "uncomfortable",
             "disease_transmission_multiplier": 0.5,
             "gathering_zones": [{"zone_name": "Entertainment / Harbourfront", "pull_strength": 0.15, "start_hour": 11, "end_hour": 20}],
@@ -240,7 +240,7 @@ EVENT_PRESET_EXAMPLES: list[dict] = [
             "stay_home_rate": None,
             "happiness_delta": 0.15,
             "happiness_per_industry": None,
-            "tweet_rate_multiplier": 3.0,
+            "tweet_rate_multiplier": 1.75,
             "tweet_sentiment": "ecstatic",
             "disease_transmission_multiplier": None,
             "gathering_zones": [
