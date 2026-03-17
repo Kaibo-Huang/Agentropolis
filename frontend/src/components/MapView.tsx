@@ -8,6 +8,7 @@ export default function MapView() {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<TorontoMapboxScene | null>(null);
   const showWelcome = useSimulationStore((s) => s.showWelcome);
+  const weather = useSimulationStore((s) => s.weather);
 
   // Initialize Mapbox scene on mount, dispose on cleanup
   useEffect(() => {
@@ -48,6 +49,12 @@ export default function MapView() {
   useEffect(() => {
     sceneRef.current?.setFollowers(followers);
   }, [followers]);
+
+  // Sync weather from store to scene (snow / rain / clear)
+  useEffect(() => {
+    if (!sceneRef.current) return;
+    sceneRef.current.setWeather(weather);
+  }, [weather]);
 
   return (
     <div

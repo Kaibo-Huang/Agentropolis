@@ -253,6 +253,7 @@ export class SessionController {
       outfitColor: string;
       accessories: string[];
     },
+    volatility?: number,
   ): Promise<void> {
     if (!this.session) return;
     const res = await this.api.createFollower(this.session.session_id, {
@@ -267,6 +268,7 @@ export class SessionController {
         outfit_color: avatarParams.outfitColor,
         accessories: avatarParams.accessories,
       },
+      volatility,
     });
     this.cb.onLog(`Joined as "${res.name}" (follower #${res.follower_id})`);
     const followerRes = await this.api.getFollowers(this.session.session_id, 0, 1000);

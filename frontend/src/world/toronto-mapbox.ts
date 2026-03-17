@@ -39,11 +39,15 @@ export interface MapFollower {
   avatar?: MapFollowerAvatar;
 }
 
+export type WeatherMode = "clear" | "rain" | "snow";
+
 /** Hex colors for building height gradient (low → high). Default: warm to cool. */
 export type BuildingColorPalette = readonly [string, string, ...string[]];
 
 const MAPBOX_STYLE_LANDING = "mapbox://styles/danielp1231231/cmmr4yn9s007f01qs9f9h0wjq";
-const MAPBOX_STYLE_SIMULATION = "mapbox://styles/mapbox/standard";
+const MAPBOX_STYLE_CLEAR = "mapbox://styles/danielp1231231/cmmrb2s9000c601qtababb76q";
+const MAPBOX_STYLE_RAIN = "mapbox://styles/danielp1231231/cmmrvmw3y000201rxhb88coah";
+const MAPBOX_STYLE_SNOW = "mapbox://styles/danielp1231231/cmmrvniyb001n01s679qbf3ft";
 type Bounds = [[number, number], [number, number]];
 
 export interface TorontoMapboxOptions {
@@ -626,6 +630,9 @@ export class TorontoMapboxScene {
   private residentialGeoJSON: GeoJSON.FeatureCollection | null = null;
   private workGeoJSON: GeoJSON.FeatureCollection | null = null;
   private styleLoaded: boolean = false;
+  private weather: WeatherMode = "clear";
+  private currentAtmosphereKey: string | null = null;
+  private precipitationInitialized: boolean = false;
   /** True after the first Earth→Toronto zoom-in has run (only on first launch). */
   private initialZoomDone: boolean = false;
   /** True when switching from landing style to simulation style (setStyle in progress). */
@@ -864,6 +871,7 @@ export class TorontoMapboxScene {
       this.styleLoaded = true;
       setup3D(this.map, this.buildingColors, this.residentialGeoJSON ?? undefined, this.workGeoJSON ?? undefined);
       setupFollowerLayer(this.map, this.lastFollowers);
+      this.initPrecipitationLayers();
       // Apply any followers queued before style was ready
       if (this.pendingFollowers) {
         const pending = this.pendingFollowers;
@@ -908,17 +916,108 @@ export class TorontoMapboxScene {
     });
   }
 
+  private initPrecipitationLayers(): void {
+    if (!this.map || this.precipitationInitialized) return;
+
+    // Simple particle fields for snow/rain using circles over downtown bounds
+    const makeParticles = (count: number): GeoJSON.FeatureCollection => {
+      const [sw, ne] = BASE_TORONTO_BOUNDS;
+      const [minLng, minLat] = sw;
+      const [maxLng, maxLat] = ne;
+      const features: GeoJSON.Feature[] = [];
+      for (let i = 0; i < count; i++) {
+        const u = Math.random();
+        const v = Math.random();
+        const lng = minLng + (maxLng - minLng) * u;
+        const lat = minLat + (maxLat - minLat) * v;
+        features.push({
+          type: "Feature",
+          geometry: {
+            type: "Point",
+            coordinates: [lng, lat],
+          },
+          properties: {},
+        });
+      }
+      return { type: "FeatureCollection", features };
+    };
+
+    if (!this.map.getSource("snow-particles")) {
+      this.map.addSource("snow-particles", {
+        type: "geojson",
+        data: makeParticles(450),
+      });
+    }
+    if (!this.map.getLayer("snow-particles-layer")) {
+      this.map.addLayer({
+        id: "snow-particles-layer",
+        type: "circle",
+        source: "snow-particles",
+        paint: {
+          "circle-radius": 2,
+          "circle-color": "#ffffff",
+          "circle-opacity": 0.65,
+          "circle-blur": 0.4,
+        },
+      });
+    }
+
+    if (!this.map.getSource("rain-particles")) {
+      this.map.addSource("rain-particles", {
+        type: "geojson",
+        data: makeParticles(320),
+      });
+    }
+    if (!this.map.getLayer("rain-particles-layer")) {
+      this.map.addLayer({
+        id: "rain-particles-layer",
+        type: "circle",
+        source: "rain-particles",
+        paint: {
+          "circle-radius": 1.4,
+          "circle-color": "#38bdf8",
+          "circle-opacity": 0.7,
+          "circle-blur": 0.3,
+        },
+      });
+    }
+
+    this.precipitationInitialized = true;
+    // Ensure correct initial visibility
+    this.applyPrecipitationVisibility();
+  }
+
   updateState(hourOfDay: number): void {
     if (!this.map || !this.map.isStyleLoaded()) return;
 
     const timeOfDay = hourOfDay / 24;
     const isNight = timeOfDay < 0.25 || timeOfDay > 0.75;
-    const mode = isNight ? "dark" : "light";
+    const baseMode = isNight ? "dark" : "light";
 
-    // Atmospheric fog for day/night mood.
-    if (this.currentStyle !== mode) {
-      this.currentStyle = mode;
-      if (isNight) {
+    // Atmospheric fog for day/night + weather mood.
+    const atmosphereKey = `${baseMode}-${this.weather}`;
+    if (this.currentAtmosphereKey !== atmosphereKey) {
+      this.currentAtmosphereKey = atmosphereKey;
+      this.currentStyle = baseMode;
+      if (!this.map) return;
+
+      if (this.weather === "snow") {
+        this.map.setFog({
+          color: "#e5ecf5",
+          "horizon-blend": 0.3,
+          range: [0.5, 5.5],
+          "space-color": "#0b1120",
+          "star-intensity": 0.0,
+        });
+      } else if (this.weather === "rain") {
+        this.map.setFog({
+          color: "#0f172a",
+          "horizon-blend": 0.25,
+          range: [0.4, 5.0],
+          "space-color": "#020617",
+          "star-intensity": 0.0,
+        });
+      } else if (isNight) {
         this.map.setFog({
           color: "#020617",
           "horizon-blend": 0.35,
@@ -1009,6 +1108,43 @@ export class TorontoMapboxScene {
     }
   }
 
+  setWeather(weather: WeatherMode): void {
+    if (this.weather === weather) return;
+    this.weather = weather;
+    this.currentAtmosphereKey = null;
+    this.applyPrecipitationVisibility();
+    if (!this.map) return;
+    // Swap between dedicated weather styles for simulation view
+    const targetStyle =
+      this.weather === "snow"
+        ? MAPBOX_STYLE_SNOW
+        : this.weather === "rain"
+          ? MAPBOX_STYLE_RAIN
+          : MAPBOX_STYLE_CLEAR;
+    this.switchingToSimulationStyle = false;
+    this.map.setStyle(targetStyle);
+  }
+
+  private applyPrecipitationVisibility(): void {
+    if (!this.map) return;
+    const snowVisible = this.weather === "snow";
+    const rainVisible = this.weather === "rain";
+    if (this.map.getLayer("snow-particles-layer")) {
+      this.map.setLayoutProperty(
+        "snow-particles-layer",
+        "visibility",
+        snowVisible ? "visible" : "none",
+      );
+    }
+    if (this.map.getLayer("rain-particles-layer")) {
+      this.map.setLayoutProperty(
+        "rain-particles-layer",
+        "visibility",
+        rainVisible ? "visible" : "none",
+      );
+    }
+  }
+
   private beginLandingLoop(startIndex: number = 0): void {
     if (!this.map || !this.isLandingRoute) return;
 
@@ -1094,7 +1230,8 @@ export class TorontoMapboxScene {
     if (this.map) {
       this.map.stop();
       this.switchingToSimulationStyle = true;
-      this.map.setStyle(MAPBOX_STYLE_SIMULATION);
+      // When leaving landing, always go to clear-day simulation first.
+      this.map.setStyle(MAPBOX_STYLE_CLEAR);
     }
   }
 

@@ -137,7 +137,7 @@ export class ApiClient {
   /** Create a follower with a custom avatar (e.g. user joining the simulation). */
   createFollower(
     sessionId: string,
-    body: { name: string; avatar_params: AvatarParamsResponse },
+    body: { name: string; avatar_params: AvatarParamsResponse; volatility?: number },
   ): Promise<FollowerResponse> {
     return this.request<FollowerResponse>(
       `/api/sessions/${sessionId}/followers`,

@@ -256,13 +256,13 @@ h1, h2, h3, h4, h5, h6 {
   border-color: rgba(255, 255, 255, 0.18);
 }
 .btn-primary {
-  background: var(--foreground);
-  color: var(--background);
-  border-color: var(--foreground);
+  background: #f4ebbd;
+  color: #18181b;
+  border-color: #f4ebbd;
 }
 .btn-primary:hover {
-  background: #e4e4e7;
-  border-color: #e4e4e7;
+  background: #f8f0c8;
+  border-color: #f8f0c8;
 }
 .btn-primary:disabled {
   background: var(--muted);
@@ -472,9 +472,12 @@ h1, h2, h3, h4, h5, h6 {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  align-items: center;
 }
 .event-input textarea {
   flex: 1;
+  width: 100%;
+  max-width: 520px;
   font-family: var(--font-sans);
   font-size: 0.75rem;
   padding: 0.4rem 0.5rem;
@@ -594,6 +597,23 @@ h1, h2, h3, h4, h5, h6 {
 .avatar-form label input[type="color"],
 .avatar-form select {
   margin-left: 0.5rem;
+}
+.avatar-form label input[type="text"] {
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--radius);
+  border: 1px solid #f4ebbd;
+  background: rgba(18, 18, 22, 0.8);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  box-shadow: 0 0 0 0 rgba(244, 235, 189, 0);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, background 0.2s ease;
+}
+.avatar-form label input[type="text"]:focus {
+  outline: none;
+  border-color: #f8f0c8;
+  box-shadow: 0 0 0 2px rgba(244, 235, 189, 0.25);
+  background: rgba(18, 18, 22, 0.95);
 }
 .avatar-form input[type="range"] {
   vertical-align: middle;
