@@ -81,6 +81,7 @@ export interface SimulationState {
   posts: PostResponse[];
   logEntries: string[];
   hourOfDay: number;
+  weather: "clear" | "rain" | "snow";
 
   // UI state
   showWelcome: boolean;
@@ -112,6 +113,8 @@ export interface SimulationState {
   openToolkitTab: (tab: ToolkitTab) => void;
   dismissWelcome: () => void;
   log: (msg: string) => void;
+  setWeather: (w: "clear" | "rain" | "snow") => void;
+  setWeatherFromPrompt: (prompt: string) => void;
 }
 
 // ── Store ──
@@ -240,12 +243,27 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
     posts: [],
     logEntries: [],
     hourOfDay: 8,
+    weather: "clear",
     showWelcome: true,
     activeToolkitTab: "latest_posts",
     isToolkitOpenMobile: false,
 
     // Actions
     log,
+
+    setWeather(w) {
+      set({ weather: w });
+    },
+    setWeatherFromPrompt(prompt: string) {
+      const text = prompt.toLowerCase();
+      if (text.includes("snow") || text.includes("blizzard")) {
+        set({ weather: "snow" });
+      } else if (text.includes("rain") || text.includes("storm")) {
+        set({ weather: "rain" });
+      } else {
+        set({ weather: "clear" });
+      }
+    },
 
     async createAndConnect(prompt?: string) {
       set({ phase: "loading" });
@@ -493,6 +511,8 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
         const res = await api.injectEvent(session.session_id, {
           event_prompt: eventPrompt,
         });
+        // Update local weather based on the prompt text (snow/rain keywords)
+        get().setWeatherFromPrompt(eventPrompt);
         // Build effects summary for user feedback
         const fx = res.effects;
         if (fx) {
@@ -514,7 +534,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
       }
     },
 
-    async createFollowerWithAvatar(name, avatarParams) {
+    async createFollowerWithAvatar(name, avatarParams, volatility?) {
       const { session } = get();
       if (!session) return;
 
@@ -532,6 +552,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => {
       const res = await api.createFollower(session.session_id, {
         name,
         avatar_params: apiParams,
+        volatility,
       });
       log(
         `Joined as "${res.name}" (follower #${res.follower_id})`,

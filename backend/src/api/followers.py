@@ -56,6 +56,12 @@ class CreateFollowerRequest(BaseModel):
 
     name: str = "You"
     avatar_params: AvatarParams
+    volatility: float | None = Field(
+        default=None,
+        ge=0.1,
+        le=1.5,
+        description="Optional mood swing volatility; higher = bigger happiness swings.",
+    )
 
 
 @router.get("/followers", response_model=FollowerListResponse)
@@ -130,7 +136,7 @@ async def create_follower_with_avatar(
         "position": _DEFAULT_POSITION,
         "status_ailments": [],
         "happiness": 0.5,
-        "volatility": 0.5,
+        "volatility": body.volatility if body.volatility is not None else 0.5,
         "avatar_seed": None,
         "avatar_params": body.avatar_params.model_dump(),
     }

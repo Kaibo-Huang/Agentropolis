@@ -548,7 +548,7 @@ function InjectEventTab() {
         />
         <button
           type="button"
-          className="btn btn-primary"
+          className="btn btn-primary btn-inject"
           disabled={!canSubmit}
           onClick={handleSubmit}
         >
@@ -567,13 +567,13 @@ function CreateAvatarTab() {
   const session = useSimulationStore((state) => state.session);
 
   const [name, setName] = useState("You");
-  const [skinTone, setSkinTone] = useState(40);
   const [bodyType, setBodyType] = useState("average");
-  const [hairTexture, setHairTexture] = useState("straight");
   const [hairStyle, setHairStyle] = useState("short");
   const [hairColor, setHairColor] = useState("#4a3728");
   const [outfit, setOutfit] = useState("casual");
   const [outfitColor, setOutfitColor] = useState("#2c3e50");
+  const [volatility, setVolatility] = useState(0.8);
+  const [industry, setIndustry] = useState("");
   const [glasses, setGlasses] = useState(false);
   const [hat, setHat] = useState(false);
   const [bag, setBag] = useState(false);
@@ -593,16 +593,20 @@ function CreateAvatarTab() {
     ].filter(Boolean) as string[];
 
     try {
-      await createFollowerWithAvatar(name.trim() || "You", {
-        skinTone: skinTone / 100,
-        bodyType,
-        hairTexture,
-        hairStyle,
-        hairColor,
-        outfit,
-        outfitColor,
-        accessories,
-      });
+      await createFollowerWithAvatar(
+        name.trim() || "You",
+        {
+          skinTone: 0.4,
+          bodyType,
+          hairTexture: "straight",
+          hairStyle,
+          hairColor,
+          outfit,
+          outfitColor,
+          accessories,
+        },
+        volatility,
+      );
     } catch (error) {
       log(`Error: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -612,8 +616,8 @@ function CreateAvatarTab() {
     <section className="toolkit-card">
       <h3>Create Your Avatar</h3>
       <p className="avatar-desc">
-        Join the simulation with a custom avatar. No photos, just style and
-        color choices.
+        Choose how you&apos;ll appear in profile popups. These details only affect your
+        on-map appearance and are never used outside the simulation.
       </p>
       <div className="avatar-form">
         <label>
@@ -626,15 +630,26 @@ function CreateAvatarTab() {
           />
         </label>
         <label>
-          Skin tone{" "}
+          Mood swing volatility{" "}
           <input
             type="range"
-            min={0}
-            max={100}
-            value={skinTone}
-            onChange={(event) => setSkinTone(Number(event.target.value))}
+            min={0.2}
+            max={1.5}
+            step={0.1}
+            value={volatility}
+            onChange={(event) => setVolatility(Number(event.target.value))}
           />{" "}
-          <span>{(skinTone / 100).toFixed(2)}</span>
+          <span>{volatility.toFixed(1)}</span>
+        </label>
+        <label>
+          Industry{" "}
+          <input
+            type="text"
+            value={industry}
+            onChange={(event) => setIndustry(event.target.value)}
+            maxLength={128}
+            placeholder="e.g. Tech, Finance"
+          />
         </label>
         <label>
           Body{" "}
@@ -642,18 +657,6 @@ function CreateAvatarTab() {
             <option value="slim">Slim</option>
             <option value="average">Average</option>
             <option value="broad">Broad</option>
-          </select>
-        </label>
-        <label>
-          Hair texture{" "}
-          <select
-            value={hairTexture}
-            onChange={(event) => setHairTexture(event.target.value)}
-          >
-            <option value="straight">Straight</option>
-            <option value="wavy">Wavy</option>
-            <option value="curly">Curly</option>
-            <option value="coily">Coily</option>
           </select>
         </label>
         <label>
