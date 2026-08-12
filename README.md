@@ -1,10 +1,8 @@
 # Agentropolis - Simulate Society With Thousands of AI Agents
 
-https://github.com/user-attachments/assets/dfcd64a7-6694-4104-b22e-4e77ffc70c00
-
 Agentropolis is a real-time, multi-multi-agent urban simulation grounded in Toronto geography.  
 The system runs thousands of AI-driven followers, streams tick updates over WebSockets, and renders live behavior on a 3D Mapbox scene.
-
+https://github.com/user-attachments/assets/dfcd64a7-6694-4104-b22e-4e77ffc70c00
 ## Why This Exists
 
 Most city simulations are either purely statistical or purely visual.  
