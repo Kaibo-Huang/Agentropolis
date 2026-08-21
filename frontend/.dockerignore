@@ -1,0 +1,14 @@
+node_modules
+.next
+dist
+dist-web
+.git
+.env
+.env.local
+.env.*.local
+.env.example
+*.log
+.DS_Store
+Dockerfile
+.dockerignore
+*.tsbuildinfo

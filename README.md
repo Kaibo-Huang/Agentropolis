@@ -127,6 +127,19 @@ Server -> client:
 
 Behavior note: when the last client disconnects, the session is auto-paused.
 
+## Run with Docker
+
+Copy `.env.example` to `.env` at the repository root and fill in your keys, then:
+
+```bash
+docker compose up --build
+```
+
+- Frontend: `http://localhost:3000`
+- Backend: `http://localhost:8080` (health check at `/health`)
+
+`NEXT_PUBLIC_*` values are baked into the frontend bundle at image build time, so rebuild the frontend image after changing them. The backend image is the same one the CI pipeline (`.github/workflows/docker-build.yml`) pushes to GCR and deploys to Cloud Run; it honors the `PORT` env var (default 8080).
+
 ## Local Development
 
 ### Prerequisites
