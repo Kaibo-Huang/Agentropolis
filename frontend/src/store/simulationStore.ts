@@ -106,6 +106,7 @@ export interface SimulationState {
       outfitColor: string;
       accessories: string[];
     },
+    volatility?: number,
   ) => Promise<void>;
   disconnect: () => Promise<void>;
   setToolkitTab: (tab: ToolkitTab) => void;

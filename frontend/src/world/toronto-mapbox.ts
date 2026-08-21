@@ -658,7 +658,7 @@ export class TorontoMapboxScene {
     this.map = new mapboxgl.Map({
       container,
       accessToken: token,
-      style: startAtEarth ? MAPBOX_STYLE_LANDING : MAPBOX_STYLE_SIMULATION,
+      style: startAtEarth ? MAPBOX_STYLE_LANDING : MAPBOX_STYLE_CLEAR,
       center: TORONTO_CENTER,
       zoom: startAtEarth ? 2 : 15.2,
       minZoom: 2,
